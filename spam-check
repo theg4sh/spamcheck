@@ -2,7 +2,7 @@
 # 
 # 
 SCRIPT_NAME='spam-check'
-VERSION='0.3.3'
+VERSION='0.3.4'
 DESCRIPTION='SpamCheck - скрипт для проверки IP-адресов по спам базам'
 AUTHOR='(C) 2010 Roman (Angel2S2) Shagrov'
 EMAIL='angel2s2ru@gmail.com'
