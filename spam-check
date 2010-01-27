@@ -38,9 +38,13 @@ LICENSE='GPLv3'
 # 
 # История изменений ( - - удалено; + - добавлено; = - изменено):
 # 
-# ToDo Version 0.3.4
+# ToDo Version 0.3.5
 # + Вывод не только на консоль, но и в logger (для отправки вывода в файл или в syslog)
 # + Обработка "алиасов" (как правило это MX-записи в DNS-сервере)
+#
+# Version 0.3.4
+# = Немного подправил хелп (--help)
+# = В некоторых местах заменил sed на for, чтобы не делать лишнии циклы
 #
 # Version 0.3.3
 # = Весь вывод предварительно пропускается через iconv, чтобы сконвертировать UTF-8 в системную локаль
@@ -142,7 +146,7 @@ _help() {
 	_output 1 "   -d		- Проверить по указанному DNSBL"
 	_output 1 "   -f		- Взять список DNSBL-серверов из файла (по одному на строчку)"
 	_output 1 "   -i		- Сграбить список DNSBL с сайта http://myiptest.com/"
-	_output 1 "   -s		- Указать DNS-сервер, через который будет идти проверка (по умолчанию OpenDNS - 208.67.222.222)"
+	_output 1 "   -s		- Указать DNS-сервер, через который будет идти проверка"
 	_output 1 "   -t		- Считать Time Out'ы ошибкой"
 	_output 1 "   --		- Считается, что дальше идут только ip и/или доманные имена"
 	_output 1 "   [ip or domain-name ...]	- ip и/или доменный имена, которые нужно проверить"
@@ -227,17 +231,11 @@ _reverse_ip() {
 #  output	Сообщение о результате проверки
 #  return	0 or 1
 _get_and_parse_dnsbl_return() {
-	# Преобразуем пробел в перевод строки, чтобы было легче парсить, и удаляем пустые строки, если таковые появятся
-	echo "$DNSBL_LIST" | $SED 's/\ /\n/g' | $SED '/^$/d' | (
-		while read DNSBL ; do
+	for DNSBL in $DNSBL_LIST ; do
 		GPD=$($HOST -t A $1.$DNSBL $DNS_SERVER)
 		RES_A=$(echo "$GPD" | $SED -n '/not\ found/p')
 		# Нас нет в DNSBL :)
 		if [ -n "$RES_A" ] ; then
-
-# Host 184.67.108.89.c10.rbl.hk not found: 2(SERVFAIL)
-# Host 184.67.108.89.rot.blackhole.cantv.net not found: 2(SERVFAIL)
-
 			_output 1 "[ OK ]         - $DNSBL		- $(echo $RES_A | $SED 's/^.*\(not\ found.\+$\)/\1/')"
 		else
 			RES_A=$(echo "$GPD" | $SED -n '/\ has\ address\ /s/^.*address\ \([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\).*$/\1/p')
@@ -264,9 +262,7 @@ _get_and_parse_dnsbl_return() {
 			fi
 		fi
 		done
-		# Т.к. цикл это отдельный подшелл, то выход из функции приходится запихивать в этот же подшелл
 		return $RETURN_CODE
-	)
 }
 
 # IP указан?
@@ -279,7 +275,7 @@ if [ -r $RESOLVCONF ] ; then
 	# ...и проверяем их на доступность...
 	for NS_CURRENT in $NS ; do
 		# ...если хоть один доступен...
-		$PING $(echo $NS | $SED 's/\ /\n/g' | $SED '2d') >/dev/null 2>&1
+		$PING $NS_CURRENT >/dev/null 2>&1
 		if [ $? -eq 0 ] ; then
 			# ...то будем юзать его
 			DNS_SERVER=$NS_CURRENT
@@ -288,17 +284,13 @@ if [ -r $RESOLVCONF ] ; then
 	done
 fi	# В противном случае будет использоваться DNS-сервер по дефолту (см. переменную $DNS_SERVER в разделе "Параметры по умолчанию")
 
-# Преобразуем пробел в перевод строки, чтобы было легче парсить, и удаляем пустые строки, если таковые появятся
-echo "$IP_LIST" | $SED 's/\ /\n/g' | $SED '/^$/d' | (
-	while read IP ; do
-		# Получаем "перевернутый" IP
-		R_IP=$(_reverse_ip $IP)
-		_output 1 "------------------------------------------$IP------------"
-				# Проверяем наши IP по спам-базам и выводим результат на консоль
-				_get_and_parse_dnsbl_return $R_IP
-				EXIT_CODE=$?
-	done
-	# Т.к. цикл это отдельный подшелл, то выход из скрипта приходится запихивать в этот же подшелл
-	exit $EXIT_CODE
-)
+for IP in $IP_LIST ; do
+	# Получаем "перевернутый" IP
+	R_IP=$(_reverse_ip $IP)
+	_output 1 "------------------------------------------$IP------------"
+			# Проверяем наши IP по спам-базам и выводим результат на консоль
+			_get_and_parse_dnsbl_return $R_IP
+			EXIT_CODE=$?
+done
+exit $EXIT_CODE
 
