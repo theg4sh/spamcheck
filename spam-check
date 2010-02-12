@@ -34,6 +34,10 @@ WGET='/usr/bin/wget'
 HOST='/usr/bin/host'
 ICONV='/usr/bin/iconv -f UTF-8 '
 PING='/bin/ping -c 1 '
+DATE='/bin/date'
+TOUCH='/bin/touch'
+LOGGER='/usr/bin/logger'
+HOSTNAME=$($SED "1q" /proc/sys/kernel/hostname) #'/bin/uname -n'
 
 # "Вшитый" список DNSBL для проверки
 DNSBL_LIST='abuse.rfc-ignorant.org access.redhawk.org aspews.ext.sorbs.net b.barracudacentral.org blackholes.brainerd.net blackholes.five-ten-sg.com blackholes.wirehub.net blacklist.junkemailfilter.com blacklist.sci.kun.nl blacklist.woody.ch bl.deadbeef.com bl.emailbasura.org block.dnsbl.sorbs.net bl.redhatgate.com bl.spamcannibal.org bl.spamcop.net bl.technovision.dk c10.rbl.hk cbl.abuseat.org cbl.anti-spam.org.cn cblless.anti-spam.org.cn cblplus.anti-spam.org.cn combined.njabl.org db.wpbl.info dialups.mail-abuse.org dialups.visi.com dnsbl-0.uceprotect.net dnsbl-1.uceprotect.net dnsbl-2.uceprotect.net dnsbl-3.uceprotect.net dnsbl.ahbl.org dnsbl.cyberlogic.net dnsbl.jammconsulting.com dnsbl.kempt.net dnsbl.njabl.org dnsbl.sorbs.net duinv.aupads.org dul.dnsbl.sorbs.net dul.ru fl.chickenboner.biz hil.habeas.com hostkarma.junkemailfilter.com http.dnsbl.sorbs.net http.opm.blitzed.org images.rbl.msrbl.net ips.backscatterer.org ircbl.ahbl.org ix.dnsbl.manitu.net korea.services.net l2.bbfh.ext.sorbs.net list.dnswl.org mail-abuse.blacklist.jippg.org map.spam-rbl.com misc.dnsbl.sorbs.net msgid.bl.gweep.ca multi.surbl.org multi.uribl.com no-more-funn.moensted.dk ohps.dnsbl.net.au omrs.dnsbl.net.au orid.dnsbl.net.au orvedb.aupads.org osps.dnsbl.net.au osrs.dnsbl.net.au owfs.dnsbl.net.au owps.dnsbl.net.au pbl.spamhaus.org phishing.rbl.msrbl.net probes.dnsbl.net.au proxy.bl.gweep.ca psbl.surriel.com query.bondedsender.org rbl.cluecentral.net rbl-plus.mail-abuse.org rbl.snark.net rdts.dnsbl.net.au relays.bl.gweep.ca relays.bl.kundenserver.de relays.mail-abuse.org relays.nether.net ricn.dnsbl.net.au rmst.dnsbl.net.au rot.blackhole.cantv.net rsbl.aupads.org satos.rbl.cluecentral.net sbl.csma.biz sbl.spamhaus.org sbl-xbl.spamhaus.org smtp.dnsbl.sorbs.net socks.dnsbl.sorbs.net socks.opm.blitzed.org sorbs.dnsbl.net.au spam.dnsbl.sorbs.net spamguard.leadmon.net spam.olsentech.net spamrbl.imp.ch spamsites.dnsbl.net.au spamsources.dnsbl.info spamsources.fabel.dk spam.wytnij.to t1.bl.dnsbl.net.au t1.dnsbl.net.au ubl.unsubscore.com ucepn.dnsbl.net.au virbl.bit.nl virbl.dnsbl.bit.nl virus.rbl.jp virus.rbl.msrbl.net web.dnsbl.sorbs.net whois.rfc-ignorant.org wingate.opm.blitzed.org wormrbl.imp.ch wpbl.dnsbl.net.au xbl.spamhaus.org zen.spamhaus.org zombie.dnsbl.sorbs.net rhsbl.sorbs.net'
@@ -53,22 +57,39 @@ DNS_SERVER='208.67.222.222'	# -s	- DNS Server (OpenDNS.com), через кото
 RESOLVCONF='/etc/resolv.conf'
 SHOW_IP_ONLY=0				# -p	- Только показать все IP'шники, которые будут проверены
 
+USE_LOG=0				# --log [file]  - вести лог в файл, 
+					# либо если файл не указан, проверить системные настройки ведения лога на наличие строк содержащих $LOG_TAG и использовать $LOGGER, 
+					# иначе будет использован файл по умолчанию $LOG_FILE_DEFAULT
+USE_SYSLOG=0				# --slog        - выводить в syslog, игнорируя системные настройки;
+					# так же флаг устанавливается в случае если настроен вывод для $LOGGER (syslog, syslog-ng, rsyslog etc.)
+LOG_TAG="spamcheck"			# строка маркировки в логе
+LOG_FILE=''				# имя файла для лога
+LOG_FILE_DEFAULT="./$LOG_TAG.log"	#"$($DATE +spamcheck-%Y%m%d-%H%M%S.log)" # имя файла лога по умолчанию
+
 
 
 _output() {
 # name		Конвертирует строку в текущую локаль из UTF-8 и выводит строку на стандартный поток либо поток ошибок
-# $1		Строка, котору надо вывести (надо заключать в кавычки, если есть пробельные символы)
-# $2		Куда выводить (stduot (1)  или stderr (2))
+# $1		Строка, которую надо вывести (надо заключать в кавычки, если есть пробельные символы)
+# $2		Куда выводить (stdout (1)  или stderr (2))
 # output	Возвращает указанную строку ($1) выводя ее на stdout или stderr
 # return	0
 
 	# Если обычный режим, то выводим инфу на консоль, иначе просто все игнорируем
+	# Вывод в любом случае будет перекодирован 
+	local MSG=$(echo "$2" | $ICONV)
 	if [ $IS_QUIET -eq 0 ] ; then
 		if [ $1 -eq 2 ] ; then
-			echo "$2" | $ICONV 1>&2
+			echo "$MSG" 1>&2
 		else
-			echo "$2" | $ICONV
+			echo "$MSG"
 		fi
+	fi
+	if [ $USE_SYSLOG -eq 1 ] ; then
+		$LOGGER -t "$LOG_TAG" -- "$MSG"
+	elif [ "$USE_LOG" -eq 1 ] ; then
+		# можно добавить [$$] к $LOG_TAG, но pid будет постоянно разным
+		$DATE +"%b %m %T $HOSTNAME $LOG_TAG: $MSG" >> "$LOG_FILE"
 	fi
 }
 
@@ -100,10 +121,13 @@ _help() {
 	_output 1 "   -p		- Показать список IP, которые должны быть проверены"
 	_output 1 "   -d		- Проверить по указанному DNSBL"
 	_output 1 "   -f		- Взять список DNSBL-серверов из файла"
-	_output 1 "                  + - \"склеить\" базы из файла и \"вшитую\""
+	_output 1 "   +<file>		- \"склеить\" базы из файла и \"вшитую\""
 	_output 1 "   -i		- Сграбить список DNSBL с сайта http://myiptest.com/"
 	_output 1 "   -s		- Указать DNS-сервер, через который будет идти проверка"
 	_output 1 "   -t		- Считать Time Out'ы ошибкой"
+	_output 1 "   --log [file]	- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
+	_output 1 "     		  Подробнее на http://code.google.com/p/spamcheck/wiki/logger"
+	_output 1 "   --slog	- Игнорировать программные настройки и вести системное логгирование"
 	_output 1 "   --		- Считается, что дальше идут только ip и/или доменные имена"
 	_output 1 "   [ip or domain-name ...]	- ip и/или доменные имена, которые нужно проверить"
 	_output 1 "   --version, --help, --usage	- без комментариев"
@@ -173,26 +197,49 @@ _read_dnsbl() {
 	IS_ERROR=0
 	if [ -n "$1" ] ; then
 		# Выбираем из входной строки первый символ
-		TMP_STR=$(echo $1 | $SED 's/\(^.\?\).*/\1/')
-		if [ "+" = "$TMP_STR" ] ; then
+		if [ "+" = "${1:0:1}" ] ; then
 			# Выбираем из входной строки все, кроме первого символа
-			TMP_FILE=$(echo $1 | $SED 's/^.\?\(.\*\)/\1/')
-			if [ -r "$TMP_FILE" ] ; then
-				DNSBL_LIST="$DNSBL_LIST $($SED '/^$/d' $TMP_FILE)"
+			set ${1/+}
+			if [ -r "$1" ] ; then
+				DNSBL_LIST="$DNSBL_LIST $($SED '/^[[:blank:]]*#/d;/^$/d' "$1")"
 			else
-				_output 2 "Файл $TMP_FILE либо не существует, либо нет прав на чтение!"
+				_output 2 "Файл $1 либо не существует, либо нет прав на чтение!"
 				exit 1
 			fi
 		elif [ -r "$1" ] ; then
-			DNSBL_LIST=$($SED '/^$/d' $1)
+			DNSBL_LIST=$($SED '/^[[:blank:]]*#/d;/^$/d' "$1")
 		else
 			_output 2 "Файл $1 либо не существует, либо нет прав на чтение!"
 			exit 1
 		fi
+		# эмуляция | uniq
+		DNSBL_LIST="$(echo $DNSBL_LIST | $SED -e ':a; s/\(^[^ ]\+\.[^ .]\+\) \(.\+\) \1/\2 \1/; ta;')"
 	else
-			_output 2 "Тут не должно быть ошибки, но она есть... Напиши мне багрепорт, плиз."
-			exit 1
+		_output 2 "Тут не должно быть ошибки, но она есть... Напиши мне багрепорт, плиз."
+		exit 1
 	fi
+}
+
+_log_set() {
+# name		Установка ведения лога
+# output	Сообщение в случае ошибки
+# return	Флаг ошибки
+	local TMP_DIR
+	# проверка на наличие в системных настройках ведения лога строк содержащих $LOG_TAG
+	if [ -z "$LOG_FILE" -a -n "$($SED -ne "/^[[:blank:]]*#/d;/$LOG_TAG/p" /etc/*syslog*.conf)" ] ; then
+		[ -e "$LOGGER" ] && USE_SYSLOG=1;
+		return 0;
+	fi
+
+	[ -z "$LOG_FILE" ] && LOG_FILE="$LOG_FILE_DEFAULT"
+	TMP_DIR=$(echo "$LOG_FILE" | $SED -e '/^[^\/\.]/s/^/\.\//;s/^\.[^\/]/\.\//;s/\(.*\)\/\([^\/].*\)/\1/;')
+#	[ ! -e "$TMP_DIR" ] && mkdir -p "$TMP_DIR"
+	if ! $TOUCH "$LOG_FILE" &> /dev/null ; then
+		USE_LOG=0
+		_output 2 "Ведение лога невозможно - нет прав на запись, либо каталог \"$TMP_DIR\" не существует"
+		return 1
+	fi
+	return 0;
 }
 
 # Парсим параметры запуска
@@ -207,6 +254,9 @@ while [ $# -gt 0 ]; do
 		"-l"	) IS_DNSBL_PRINT=1 ; shift ;;
 		"-s"	) IS_MY_DNS=1 ; DNS_SERVER=$2 ; shift 2 ;;
 		"-p"	) SHOW_IP_ONLY=1 ; shift ;;
+		# При добавлении/изменении имен параметров обновите строку для $SED
+		"--log" ) USE_LOG=1 ; shift ; [ -n "$(echo "$1" | $SED -e '/^-[qtfidlsp-]$/d;/^--\(\|version\|help\|usage\|slog\|log\)$/d')" ] && LOG_FILE="$1" && shift ;;
+		"--slog") USE_SYSLOG=1 ; shift ;;
 		"--"	) shift ; _build_ip_list $* ; break ;;
 		"--version"	) _version ; exit 255 ;;
 		"--help"	) _help ; exit 255 ;;
@@ -215,6 +265,11 @@ while [ $# -gt 0 ]; do
 		*		) _build_ip_list $1 ; shift ;;
 	esac
 done
+
+# Обрабатываем параметр --log первым, дабы зафиксировать все
+if [ "$USE_SYSLOG" -eq 0 -a "$USE_LOG" -eq 1 ] ; then
+	_log_set || exit 1;
+fi
 
 # Список DNSBL-серверов заполнен?
 if [ -z "$DNSBL_LIST" -a $IS_INET -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Видать не удалось подкючиться к северу.' ; fi
@@ -237,7 +292,7 @@ if [ $IS_FILE -gt 0 -a $IS_ONE_DNSBL -gt 0 ] ; then _bad_params_combine ; fi
 if [ $IS_ONE_DNSBL -gt 0 -a $IS_INET -gt 0 ] ; then _bad_params_combine ; fi
 
 # Вывод списка DNSBL серверов, если на то был "запрос"
-if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "$DNSBL_LIST" | $SED 's/\ /\n/g' | $SED '/^$/d' ; exit 0 ; fi
+if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "$DNSBL_LIST" | $SED 's/\ /\n/g;/^$/d' ; exit 0 ; fi
 
 _reverse_ip() {
 # name		"Переворачивает" переданный ip-адрес и возвращает его
