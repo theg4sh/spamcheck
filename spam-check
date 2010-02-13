@@ -107,7 +107,7 @@ _usage() {
 # name		"Правила" использования скрипта
 # output	--//--
 # return	0
-	_output 1 "$SCRIPT_NAME [-q] [-l] [-d dnsbl | -f [+]filename | -i] [-s dns_server] [-t] [-w] [--] [ip or domain-name ...]"
+	_output 1 "$SCRIPT_NAME [-q] [-l] [-d dnsbl | -f [+]filename | -i] [-s dns_server] [-t] [-w] [--log [file]|--slog] [--] [ip or domain-name ...]"
 }
 
 _help() {
