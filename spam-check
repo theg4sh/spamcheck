@@ -292,7 +292,7 @@ if [ $IS_FILE -gt 0 -a $IS_ONE_DNSBL -gt 0 ] ; then _bad_params_combine ; fi
 if [ $IS_ONE_DNSBL -gt 0 -a $IS_INET -gt 0 ] ; then _bad_params_combine ; fi
 
 # Вывод списка DNSBL серверов, если на то был "запрос"
-if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "$DNSBL_LIST" | $SED 's/\ /\n/g;/^$/d' ; exit 0 ; fi
+if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "$DNSBL_LIST" | $SED 's/[[:blank:]]\+/\n/g' ; exit 0 ; fi
 
 _reverse_ip() {
 # name		"Переворачивает" переданный ip-адрес и возвращает его
