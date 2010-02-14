@@ -37,7 +37,7 @@ PING='/bin/ping -c 1 '
 DATE='/bin/date'
 TOUCH='/bin/touch'
 LOGGER='/usr/bin/logger'
-HOSTNAME=$($SED "1q" /proc/sys/kernel/hostname) #'/bin/uname -n'
+HOSTNAME=$($SED "1q" /proc/sys/kernel/hostname) #uname -n
 
 # "Вшитый" список DNSBL для проверки
 DNSBL_LIST='abuse.rfc-ignorant.org access.redhawk.org aspews.ext.sorbs.net b.barracudacentral.org blackholes.brainerd.net blackholes.five-ten-sg.com blackholes.wirehub.net blacklist.junkemailfilter.com blacklist.sci.kun.nl blacklist.woody.ch bl.deadbeef.com bl.emailbasura.org block.dnsbl.sorbs.net bl.redhatgate.com bl.spamcannibal.org bl.spamcop.net bl.technovision.dk c10.rbl.hk cbl.abuseat.org cbl.anti-spam.org.cn cblless.anti-spam.org.cn cblplus.anti-spam.org.cn combined.njabl.org db.wpbl.info dialups.mail-abuse.org dialups.visi.com dnsbl-0.uceprotect.net dnsbl-1.uceprotect.net dnsbl-2.uceprotect.net dnsbl-3.uceprotect.net dnsbl.ahbl.org dnsbl.cyberlogic.net dnsbl.jammconsulting.com dnsbl.kempt.net dnsbl.njabl.org dnsbl.sorbs.net duinv.aupads.org dul.dnsbl.sorbs.net dul.ru fl.chickenboner.biz hil.habeas.com hostkarma.junkemailfilter.com http.dnsbl.sorbs.net http.opm.blitzed.org images.rbl.msrbl.net ips.backscatterer.org ircbl.ahbl.org ix.dnsbl.manitu.net korea.services.net l2.bbfh.ext.sorbs.net list.dnswl.org mail-abuse.blacklist.jippg.org map.spam-rbl.com misc.dnsbl.sorbs.net msgid.bl.gweep.ca multi.surbl.org multi.uribl.com no-more-funn.moensted.dk ohps.dnsbl.net.au omrs.dnsbl.net.au orid.dnsbl.net.au orvedb.aupads.org osps.dnsbl.net.au osrs.dnsbl.net.au owfs.dnsbl.net.au owps.dnsbl.net.au pbl.spamhaus.org phishing.rbl.msrbl.net probes.dnsbl.net.au proxy.bl.gweep.ca psbl.surriel.com query.bondedsender.org rbl.cluecentral.net rbl-plus.mail-abuse.org rbl.snark.net rdts.dnsbl.net.au relays.bl.gweep.ca relays.bl.kundenserver.de relays.mail-abuse.org relays.nether.net ricn.dnsbl.net.au rmst.dnsbl.net.au rot.blackhole.cantv.net rsbl.aupads.org satos.rbl.cluecentral.net sbl.csma.biz sbl.spamhaus.org sbl-xbl.spamhaus.org smtp.dnsbl.sorbs.net socks.dnsbl.sorbs.net socks.opm.blitzed.org sorbs.dnsbl.net.au spam.dnsbl.sorbs.net spamguard.leadmon.net spam.olsentech.net spamrbl.imp.ch spamsites.dnsbl.net.au spamsources.dnsbl.info spamsources.fabel.dk spam.wytnij.to t1.bl.dnsbl.net.au t1.dnsbl.net.au ubl.unsubscore.com ucepn.dnsbl.net.au virbl.bit.nl virbl.dnsbl.bit.nl virus.rbl.jp virus.rbl.msrbl.net web.dnsbl.sorbs.net whois.rfc-ignorant.org wingate.opm.blitzed.org wormrbl.imp.ch wpbl.dnsbl.net.au xbl.spamhaus.org zen.spamhaus.org zombie.dnsbl.sorbs.net rhsbl.sorbs.net'
@@ -57,13 +57,13 @@ DNS_SERVER='208.67.222.222'	# -s	- DNS Server (OpenDNS.com), через кото
 RESOLVCONF='/etc/resolv.conf'
 SHOW_IP_ONLY=0				# -p	- Только показать все IP'шники, которые будут проверены
 
-USE_LOG=0				# --log [file]  - вести лог в файл, 
-					# либо если файл не указан, проверить системные настройки ведения лога на наличие строк содержащих $LOG_TAG и использовать $LOGGER, 
-					# иначе будет использован файл по умолчанию $LOG_FILE_DEFAULT
+USE_LOG=0					# --log [file]  - вести лог в файл, 
+							# либо если файл не указан, проверить системные настройки ведения лога на наличие строк содержащих $LOG_TAG 
+							# и использовать $LOGGER, иначе будет использован файл по умолчанию $LOG_FILE_DEFAULT
 USE_SYSLOG=0				# --slog        - выводить в syslog, игнорируя системные настройки;
-					# так же флаг устанавливается в случае если настроен вывод для $LOGGER (syslog, syslog-ng, rsyslog etc.)
+							# так же флаг устанавливается в случае если настроен вывод для $LOGGER (syslog, syslog-ng, rsyslog etc.)
 LOG_TAG="spamcheck"			# строка маркировки в логе
-LOG_FILE=''				# имя файла для лога
+LOG_FILE=''					# имя файла для лога
 LOG_FILE_DEFAULT="./$LOG_TAG.log"	#"$($DATE +spamcheck-%Y%m%d-%H%M%S.log)" # имя файла лога по умолчанию
 
 
@@ -121,7 +121,7 @@ _help() {
 	_output 1 "   -p		- Показать список IP, которые должны быть проверены"
 	_output 1 "   -d		- Проверить по указанному DNSBL"
 	_output 1 "   -f		- Взять список DNSBL-серверов из файла"
-	_output 1 "   +<file>		- \"склеить\" базы из файла и \"вшитую\""
+	_output 1 "		  +<file> -- \"склеить\" базы из файла и \"вшитую\""
 	_output 1 "   -i		- Сграбить список DNSBL с сайта http://myiptest.com/"
 	_output 1 "   -s		- Указать DNS-сервер, через который будет идти проверка"
 	_output 1 "   -t		- Считать Time Out'ы ошибкой"
@@ -178,10 +178,10 @@ _check_ip_list() {
 	while [ -n "$MX_LIST" ] ; do
 		for MX in $MX_LIST ; do
 			# Удаляю из переменной уже проверенный MX (он будет первым в "массиве")
-			MX_LIST=$(echo $MX_LIST | $SED 's/[\ \t]*[^\ \t]\+[\ \t]*//')
+			MX_LIST=$(echo $MX_LIST | $SED 's/^\([[:blank:]]*\)[^[:blank:]]\+\1//')
 			___check_and_build_ip_list $MX
 		done
-		MX_LIST=$(echo $MX_LIST | $SED 's/^[\ \t]*//')
+		MX_LIST=$(echo $MX_LIST | $SED 's/^[[:blank:]]*//')
 	done
 }
 
@@ -201,13 +201,13 @@ _read_dnsbl() {
 			# Выбираем из входной строки все, кроме первого символа
 			set ${1/+}
 			if [ -r "$1" ] ; then
-				DNSBL_LIST="$DNSBL_LIST $($SED '/^[[:blank:]]*#/d;/^$/d' "$1")"
+				DNSBL_LIST="$DNSBL_LIST $($SED '/^[[:blank:]]*#\|^$/d' "$1")"
 			else
 				_output 2 "Файл $1 либо не существует, либо нет прав на чтение!"
 				exit 1
 			fi
 		elif [ -r "$1" ] ; then
-			DNSBL_LIST=$($SED '/^[[:blank:]]*#/d;/^$/d' "$1")
+			DNSBL_LIST=$($SED '/^[[:blank:]]*#\|^$/d' "$1")
 		else
 			_output 2 "Файл $1 либо не существует, либо нет прав на чтение!"
 			exit 1
@@ -232,7 +232,7 @@ _log_set() {
 	fi
 
 	[ -z "$LOG_FILE" ] && LOG_FILE="$LOG_FILE_DEFAULT"
-	TMP_DIR=$(echo "$LOG_FILE" | $SED -e '/^[^\/\.]/s/^/\.\//;s/^\.[^\/]/\.\//;s/\(.*\)\/\([^\/].*\)/\1/;')
+	TMP_DIR=$(echo "$LOG_FILE" | $SED -e '/^[^\/\.\~]/s/^/\.\//;s/^\.[^\/]/\.\//;s/\(.*\)\/\([^\/]*\)/\1/;')
 #	[ ! -e "$TMP_DIR" ] && mkdir -p "$TMP_DIR"
 	if ! $TOUCH "$LOG_FILE" &> /dev/null ; then
 		USE_LOG=0
@@ -346,7 +346,7 @@ if [ $IS_MY_DNS -eq 0 ] ; then
 # Если есть в системе resolv.conf...
 	if [ -r $RESOLVCONF ] ; then 
 		# ...выдираем из него IP'шники DNS-серверов...
-		NS=$($SED -n '/nameserver/s/nameserver[\ \t]\+\([0-9\.]\+\)/\1/p' $RESOLVCONF)
+		NS=$($SED -n '/nameserver/s/[[:blank:]]*nameserver[[:blank:]]\+\([0-9\.]\+\)/\1/p' $RESOLVCONF)
 		# ...и проверяем их на доступность...
 		for NS_CURRENT in $NS ; do
 			# ...если хоть один доступен...
@@ -364,7 +364,7 @@ _check_ip_list
 
 # Только показать все IP'шники, которые будут проверены
 if [ $SHOW_IP_ONLY -eq 1 ] ; then
-	echo $IP_LIST | $SED 's/\ /\n/g'
+	echo $IP_LIST | $SED 's/[[:blank:]]\+/\n/g'
 	exit 0
 fi
 
