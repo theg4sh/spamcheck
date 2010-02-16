@@ -30,13 +30,17 @@ LICENSE='GPLv3'
 # 
 
 SED='/bin/sed'
+DATE='/bin/date'
+PING='/bin/ping -c 1 '
+TOUCH='/bin/touch'
 WGET='/usr/bin/wget'
 HOST='/usr/bin/host'
+SORT='/usr/bin/sort'
+UNIQ='/usr/bin/uniq'
 ICONV='/usr/bin/iconv -f UTF-8 '
-PING='/bin/ping -c 1 '
-DATE='/bin/date'
-TOUCH='/bin/touch'
 LOGGER='/usr/bin/logger'
+
+# Имя машины, используется только для лог-файла
 HOSTNAME=$($SED "1q" /proc/sys/kernel/hostname) #uname -n
 
 # "Вшитый" список DNSBL для проверки
@@ -44,18 +48,19 @@ DNSBL_LIST='abuse.rfc-ignorant.org access.redhawk.org aspews.ext.sorbs.net b.bar
 
 # Параметры по умолчанию
 IS_QUIET=0					# -q	- Ничего не выводить
-IS_DNSBL_PRINT=0			# -l	- Вывести список dnsbl-серверов
-IS_ONE_DNSBL=0				# -d	- Указатель, что надо проверить по указанному DNSBL
+IS_DNSBL_PRINT=0				# -l	- Вывести список dnsbl-серверов
+IS_ONE_DNSBL=0					# -d	- Указатель, что надо проверить по указанному DNSBL
 IS_FILE=0					# -f	- Указатель, что используется файл
+DNSBL_FILE=''					#         Имя файла установленного параметром -f
 IS_INET=0					# -i	- Сграбить список DNSBL с сайта http://myiptest.com/
-IP_AND_FQDN_LIST=''			#		- Для временного хранения ip'шников и fqsn'ов
+IP_AND_FQDN_LIST=''				#		- Для временного хранения ip'шников и fqsn'ов
 IP_LIST=''					#		- Тут будут все IP'шники 
 MX_LIST=''					#		- Тут бубут все MX-записи (хранятся временно, для разрешения их в IP'шники)
 IS_MY_DNS=0					#		  Чтобы знать, что надо использовать указанный юзером DNS-сервер
-IS_TIME_OUT_ERROR=0			# -t	- Считать тайм ауты подключения к DNSBL ошибками и выводить в поток ошибок?
-DNS_SERVER='208.67.222.222'	# -s	- DNS Server (OpenDNS.com), через который будет проверяться IP по DNSBL
+IS_TIME_OUT_ERROR=0				# -t	- Считать тайм ауты подключения к DNSBL ошибками и выводить в поток ошибок?
+DNS_SERVER='208.67.222.222'			# -s	- DNS Server (OpenDNS.com), через который будет проверяться IP по DNSBL
 RESOLVCONF='/etc/resolv.conf'
-SHOW_IP_ONLY=0				# -p	- Только показать все IP'шники, которые будут проверены
+SHOW_IP_ONLY=0					# -p	- Только показать все IP'шники, которые будут проверены
 
 USE_LOG=0					# --log [file]  - вести лог в файл, 
 							# либо если файл не указан, проверить системные настройки ведения лога на наличие строк содержащих $LOG_TAG 
@@ -107,7 +112,7 @@ _usage() {
 # name		"Правила" использования скрипта
 # output	--//--
 # return	0
-	_output 1 "$SCRIPT_NAME [-q] [-l] [-d dnsbl | -f [+]filename | -i] [-s dns_server] [-t] [--log [file]|--slog] [--] [ip or domain-name ...]"
+	_output 1 "$SCRIPT_NAME [-q] [-l] [-d dnsbl | -f <file> | -i] [-I] [-f +<file>] [-s dns_server] [-t] [--log [file]|--slog] [--] [ip or domain-name ...]"
 }
 
 _help() {
@@ -119,10 +124,11 @@ _help() {
 	_output 1 "   -q		- Ничего не выводить"
 	_output 1 "   -l		- Показать список DNSBL-серверов"
 	_output 1 "   -p		- Показать список IP, которые должны быть проверены"
-	_output 1 "   -d		- Проверить по указанному DNSBL"
-	_output 1 "   -f		- Взять список DNSBL-серверов из файла"
-	_output 1 "		  +<file> -- \"склеить\" базы из файла и \"вшитую\""
+	_output 1 "   -d dnsbl		- Проверить по указанному dnsbl"
+	_output 1 "   -f <file>		- Взять список DNSBL-серверов из файла"
+	_output 1 "   -f +<file>	- Тоже что и -f, но в добавление к текущему списку DNSBL"
 	_output 1 "   -i		- Сграбить список DNSBL с сайта http://myiptest.com/"
+	_output 1 "   -I		- Тоже что и -i, но в добавление к текущему списку DNSBL"
 	_output 1 "   -s		- Указать DNS-сервер, через который будет идти проверка"
 	_output 1 "   -t		- Считать Time Out'ы ошибкой"
 	_output 1 "   --log [file]	- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
@@ -138,6 +144,22 @@ _bad_param() {
 # output	--//--
 # return	0
 	_output 2 "Не известный параметр: $1"
+}
+
+_bad_params_combine() {
+# name		Выводит сообщение "Не совместимые параметры!"
+# output	--//--
+# return	0
+	_output 2 "Не совместимые параметры!"
+	exit 1
+}
+
+_reverse_ip() {
+# name		"Переворачивает" переданный ip-адрес и возвращает его
+# $1		ip-адрес
+# output	"Перевернутый" ip-адрес
+# return	0
+	echo $1 | $SED -e 's/$/\n/;:z;s/\([0-9]\{1,3\}\)\([^\n]*\n\)/\2\1./;tz;s/.*\n//;s/.$//'
 }
 
 _build_ip_list() {
@@ -191,115 +213,23 @@ _read_dnsbl() {
 # output	Сообщение в случае ошибки
 # return	0
 	local IS_ERROR
-	local TMP_STR
-	local TMP_FILE
+	local RESULT
 
 	IS_ERROR=0
 	if [ -n "$1" ] ; then
-		# Выбираем из входной строки первый символ
-		if [ "+" = "${1:0:1}" ] ; then
-			# Выбираем из входной строки все, кроме первого символа
-			set ${1/+}
-			if [ -r "$1" ] ; then
-				DNSBL_LIST="$DNSBL_LIST $($SED '/^[[:blank:]]*#\|^$/d' "$1")"
-			else
-				_output 2 "Файл $1 либо не существует, либо нет прав на чтение!"
-				exit 1
-			fi
-		elif [ -r "$1" ] ; then
-			DNSBL_LIST=$($SED '/^[[:blank:]]*#\|^$/d' "$1")
+		if [ -r "$1" ] ; then
+			RESULT="$DNSBL_LIST $($SED '/^[[:blank:]]*#\|^$/d' "$1")"
+			echo "${RESULT}"
+			return 0
 		else
-			_output 2 "Файл $1 либо не существует, либо нет прав на чтение!"
-			exit 1
+			RESULT="Файл $1 не существует, либо нет прав на чтение!"
+			[ "$IS_FILE" -eq "1" ] && echo "$RESULT" 			&& return 1
+			[ "$IS_FILE" -eq "2" ] && _output 2 "УВЕДОМЛЕНИЕ: $RESULT!" 	&& return 0
 		fi
-		# эмуляция | uniq
-		DNSBL_LIST="$(echo $DNSBL_LIST | $SED -e ':a; s/\(^[^ ]\+\.[^ .]\+\) \(.\+\) \1/\2 \1/; ta;')"
-	else
-		_output 2 "Тут не должно быть ошибки, но она есть... Напиши мне багрепорт, плиз."
-		exit 1
-	fi
-}
+	fi	
 
-_log_set() {
-# name		Установка ведения лога
-# output	Сообщение в случае ошибки
-# return	Флаг ошибки
-	local TMP_DIR
-	# проверка на наличие в системных настройках ведения лога строк содержащих $LOG_TAG
-	if [ -z "$LOG_FILE" -a -n "$($SED -ne "/^[[:blank:]]*#/d;/$LOG_TAG/p" /etc/*syslog*.conf)" ] ; then
-		[ -e "$LOGGER" ] && USE_SYSLOG=1;
-		return 0;
-	fi
-
-	[ -z "$LOG_FILE" ] && LOG_FILE="$LOG_FILE_DEFAULT"
-	TMP_DIR=$(echo "$LOG_FILE" | $SED -e '/^[^\/\.\~]/s/^/\.\//;s/^\.[^\/]/\.\//;s/\(.*\)\/\([^\/]*\)/\1/;')
-#	[ ! -e "$TMP_DIR" ] && mkdir -p "$TMP_DIR"
-	if ! $TOUCH "$LOG_FILE" &> /dev/null ; then
-		USE_LOG=0
-		_output 2 "Ведение лога невозможно - нет прав на запись, либо каталог \"$TMP_DIR\" не существует"
-		return 1
-	fi
-	return 0;
-}
-
-# Парсим параметры запуска
-if [ $# -eq 0 ] ; then _help ; exit 1 ; fi
-while [ $# -gt 0 ]; do
-	case "$1" in
-		"-q"	) IS_QUIET=1 ; shift ;;
-		"-t"	) IS_TIME_OUT_ERROR=1 ; shift ;;
-		"-f"	) IS_FILE=1 ; _read_dnsbl $2 ; shift 2 ;;
-		"-i"	) IS_INET=1 ; DNSBL_LIST=$($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | $SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp') ; shift ;;
-		"-d"	) IS_ONE_DNSBL=1 ; DNSBL_LIST=$2 ; shift 2 ;;
-		"-l"	) IS_DNSBL_PRINT=1 ; shift ;;
-		"-s"	) IS_MY_DNS=1 ; DNS_SERVER=$2 ; shift 2 ;;
-		"-p"	) SHOW_IP_ONLY=1 ; shift ;;
-		# При добавлении/изменении имен параметров обновите строку для $SED
-		"--log" ) USE_LOG=1 ; shift ; [ -n "$(echo "$1" | $SED -e '/^-[qtfidlsp-]$/d;/^--\(\|version\|help\|usage\|slog\|log\)$/d')" ] && LOG_FILE="$1" && shift ;;
-		"--slog") USE_SYSLOG=1 ; shift ;;
-		"--"	) shift ; _build_ip_list $* ; break ;;
-		"--version"	) _version ; exit 255 ;;
-		"--help"	) _help ; exit 255 ;;
-		"--usage"	) _usage ; exit 255 ;;
-		-*		) _bad_param $1 ; exit 1 ;;
-		*		) _build_ip_list $1 ; shift ;;
-	esac
-done
-
-# Обрабатываем параметр --log первым, дабы зафиксировать все
-if [ "$USE_SYSLOG" -eq 0 -a "$USE_LOG" -eq 1 ] ; then
-	_log_set || exit 1;
-fi
-
-# Список DNSBL-серверов заполнен?
-if [ -z "$DNSBL_LIST" -a $IS_INET -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Видать не удалось подкючиться к северу.' ; fi
-if [ -z "$DNSBL_LIST" -a $IS_FILE -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Видать файл пустой.' ; fi
-if [ -z "$DNSBL_LIST" ] ; then _output 2 'Список DNSBL-серверов пуст! Ты случаем в скрипте переменную $DNSBL_LIST не удалил?' ; fi
-
-
-_bad_params_combine() {
-# name		Выводит сообщение "Не совместимые параметры!"
-# output	--//--
-# return	0
-	_output 2 "Не совместимые параметры!"
-	exit 1
-}
-
-# Проверка на (не)совместимость параметров
-if [ $IS_DNSBL_PRINT -gt 0 -a $IS_QUIET -gt 0 ] ; then _bad_params_combine ; fi
-if [ $IS_FILE -gt 0 -a $IS_INET -gt 0 ] ; then _bad_params_combine ; fi
-if [ $IS_FILE -gt 0 -a $IS_ONE_DNSBL -gt 0 ] ; then _bad_params_combine ; fi
-if [ $IS_ONE_DNSBL -gt 0 -a $IS_INET -gt 0 ] ; then _bad_params_combine ; fi
-
-# Вывод списка DNSBL серверов, если на то был "запрос"
-if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "$DNSBL_LIST" | $SED 's/[[:blank:]]\+/\n/g' ; exit 0 ; fi
-
-_reverse_ip() {
-# name		"Переворачивает" переданный ip-адрес и возвращает его
-# $1		ip-адрес
-# output	"Перевернутый" ip-адрес
-# return	0
-	echo $1 | $SED -e 's/$/\n/;:z;s/\([0-9]\{1,3\}\)\([^\n]*\n\)/\2\1./;tz;s/.*\n//;s/.$//'
+	echo "Тут не должно быть ошибки, но она есть... Напиши мне багрепорт, плиз."
+	return 1
 }
 
 _get_and_parse_dnsbl_return() {
@@ -332,14 +262,104 @@ _get_and_parse_dnsbl_return() {
 						_output 1 "[ ERROR ]      - $DNSBL		- connection time out"
 					fi
 				else
-					_output 2 'Странно... Ты не должен был этого видеть... о_О Напиши мне багрепорт, плиз, укажи версии sh, sed, host и самого скрипта, а так же какая у тебя ось и какие параметры были переданы скрипту. Заранее спасибо. Мое мыло: angel2s2ru@gmail.com'
+					_output 2 "Странно... Ты не должен был этого видеть... о_О Напиши мне багрепорт, плиз, укажи ${DNSBL}, версии sh, sed, host и самого скрипта, а так же какая у тебя ось и какие параметры были переданы скрипту. Заранее спасибо. Мое мыло: angel2s2ru@gmail.com"
 					RETURN_CODE=1
 				fi
 			fi
 		fi
-		done
-		return $RETURN_CODE
+	done
+	return $RETURN_CODE
 }
+
+_log_set() {
+# name		Установка ведения лога
+# output	Сообщение в случае ошибки
+# return	Флаг ошибки
+	# проверка на наличие в системных настройках ведения лога строк содержащих $LOG_TAG
+	if [ -z "$LOG_FILE" -a -n "$($SED -ne "/^[[:blank:]]*#/d;/$LOG_TAG/p" /etc/*syslog*.conf)" ] ; then
+		[ -e "$LOGGER" ] && USE_SYSLOG=1;
+		return 0;
+	fi
+
+	[ -z "$LOG_FILE" ] && LOG_FILE="$LOG_FILE_DEFAULT"
+	if ! $TOUCH "$LOG_FILE" &> /dev/null ; then
+		USE_LOG=0
+		_output 2 "Ведение лога невозможно - нет прав на запись, либо каталог не существует"
+		return 1
+	fi
+	return 0;
+}
+
+# Парсим параметры запуска
+if [ $# -eq 0 ] ; then _help ; exit 1 ; fi
+while [ $# -gt 0 ]; do
+	case "$1" in
+		"-q"	) IS_QUIET=1 ; shift ;;
+		"-t"	) IS_TIME_OUT_ERROR=1 ; shift ;;
+		"-f"	) IS_FILE=1 ; DNSBL_FILE="$2" ; shift 2 ;;
+		"-i"	) IS_INET=1 ; shift ;;
+		"-I"	) IS_INET=2 ; shift ;;
+		"-d"	) IS_ONE_DNSBL=1 ; DNSBL_LIST="$2" ; shift 2 ;;
+		"-l"	) IS_DNSBL_PRINT=1 ; shift ;;
+		"-s"	) IS_MY_DNS=1 ; DNS_SERVER="$2" ; shift 2 ;;
+		"-p"	) SHOW_IP_ONLY=1 ; shift ;;
+		# При добавлении/изменении имен параметров обновите строку для $SED
+		"--log" ) USE_LOG=1 ; shift ; [ -n "$(echo "$1" | $SED -e '/^-[qtfiIdlsp-]$/d;/^--\|--version\|--help\|--usage\|--slog\|--log$/d')" ] && LOG_FILE="$1" && shift ;;
+		"--slog") USE_SYSLOG=1 ; shift ;;
+		"--"	) shift ; _build_ip_list $* ; break ;;
+		"--version"	) _version ; exit 255 ;;
+		"--help"	) _help ; exit 255 ;;
+		"--usage"	) _usage ; exit 255 ;;
+		-*		) _bad_param $1 ; exit 1 ;;
+		*		) _build_ip_list $1 ; shift ;;
+	esac
+done
+# Определяем тут же, является ли $DNSBL_FILE добавлением к существующему blacklist`у
+if [ "+" == "${DNSBL_FILE:0:1}" ]; then
+	IS_FILE=2
+	DNSBL_FILE="${DNSBL_FILE/+}"
+fi
+
+# Обрабатываем параметр --log первым, дабы зафиксировать все
+if [ "$USE_SYSLOG" -eq 0 -a "$USE_LOG" -eq 1 ] ; then
+	_log_set || exit 1;
+fi
+
+# Проверка на (не)совместимость параметров
+[ "$IS_DNSBL_PRINT" -eq "1" -a "$IS_QUIET" -eq "1" ] && _bad_params_combine
+[ "$IS_FILE" -eq "1" -a "$IS_INET" -eq "1" ] && _bad_params_combine;
+[ "$IS_FILE" -eq "1" -o "$IS_FILE" -eq "2" ] && [ "$IS_ONE_DNSBL" -eq "1" ] && _bad_params_combine;
+[ "$IS_INET" -eq "1" -o "$IS_INET" -eq "2" ] && [ "$IS_ONE_DNSBL" -eq "1" ] && _bad_params_combine;
+
+# Обработка параметров для заполнения $DNSBL_LIST 
+if [ "$IS_ONE_DNSBL" -ne "1" ]; then
+	if [ "$IS_FILE" -eq "1" -o "$IS_FILE" -eq "2" ]; then 
+		DNSBL_LIST_RES="$(_read_dnsbl "$DNSBL_FILE")"
+		if [ "$?" -eq "1" ]; then
+			_output 2 "${DNSBL_LIST_RES}"
+			exit 1;
+		fi
+	fi
+	[ "$IS_FILE" -eq "1" ] && DNSBL_LIST="${DNBL_LIST_RES}"
+	[ "$IS_INET" -eq "1" ] && DNSBL_LIST="$($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
+							$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp')"
+
+	[ "$IS_FILE" -eq "2" ] && DNSBL_LIST="${DNSBL_LIST} ${DNBL_LIST_RES}"
+	[ "$IS_INET" -eq "2" ] && DNSBL_LIST="${DNSBL_LIST} $($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
+								$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp')"
+fi
+# эмуляция uniq, но без сортировки
+DNSBL_LIST=$(echo $DNSBL_LIST | $SED -e 's/[[:blank:]]\+/\n/g;/^$/d;' | $SORT | $UNIQ)
+#DNSBL_LIST="$(echo $DNSBL_LIST | $SED -e ':a; s/\(^[^ ]\+\.[^ .]\+\) \(.\+\) \1/\2 \1/; ta;')"
+
+# Список DNSBL-серверов заполнен?
+if [ -z "$DNSBL_LIST" -a $IS_INET -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Возможно не удалось подкючиться к северу.' ; exit 1 ; fi
+if [ -z "$DNSBL_LIST" -a $IS_FILE -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Фозможно файл пустой.' ; exit 1 ; fi
+if [ -z "$DNSBL_LIST" ] ; then _output 2 'Список DNSBL-серверов пуст! Ты случаем в скрипте переменную $DNSBL_LIST не удалил?' ; exit 1 ; fi
+
+
+# Вывод списка DNSBL серверов, если на то был "запрос"
+if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "$DNSBL_LIST" | $SED 's/[[:blank:]]\+/\n/g' ; exit 0 ; fi
 
 # Если юзер не указал свой dns-сервер и...
 if [ $IS_MY_DNS -eq 0 ] ; then
