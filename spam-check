@@ -186,11 +186,10 @@ _check_ip_list() {
 # return	0
 	local IS_IP
 	for IP in $IP_AND_FQDN_LIST ; do
-		IS_IP=$(echo $IP | $SED -n '/^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/p')
+		IS_IP=$(echo $IP | $SED -n '/^[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}$/p')
 		# если не пусто, значит у нас IP...
 		if [ -n "$IS_IP" ] ; then 
 			IP_LIST="$IP_LIST $IP"
-			echo $IP_LIST
 		# ...иначе доменное имя
 		else
 			___check_and_build_ip_list $IP
@@ -203,6 +202,7 @@ _check_ip_list() {
 		unset MX_LIST[0]
 		MX_LIST=( ${MX_LIST[@]} )
 	done
+	IP_LIST="$(echo $IP_LIST | $SED -e 's/^[[:blank:]]\+//;s/[[:blank:]]\+$//;')"
 }
 
 _read_dnsbl() {
@@ -305,14 +305,16 @@ while [ $# -gt 0 ]; do
 		*		) _build_ip_list $1 ; shift ;;
 	esac
 done
-# Определяем тут же, является ли $DNSBL_FILE добавлением к существующему blacklist`у
-if [ "+" == "${DNSBL_FILE:0:1}" ]; then
-	IS_FILE=2
-	DNSBL_FILE="${DNSBL_FILE/+}"
-fi
-if [ -z "$DNSBL_FILE" ]; then
-	_output 2 "Имя файла не указано. Если имя файла \"+\", укажите его как ./+"
-	exit 1;
+if [ "$IS_FILE" -ne "0" ]; then
+	# Определяем тут же, является ли $DNSBL_FILE добавлением к существующему blacklist`у
+	if [ "+" == "${DNSBL_FILE:0:1}" ]; then
+		IS_FILE=2
+		DNSBL_FILE="${DNSBL_FILE/+}"
+	fi
+	if [ -z "$DNSBL_FILE" ]; then
+		_output 2 "Имя файла не указано. Если имя файла \"+\", укажите его как ./+"
+		exit 1;
+	fi
 fi
 
 # Обрабатываем параметр --log первым, дабы зафиксировать все
@@ -384,7 +386,6 @@ if [ $SHOW_IP_ONLY -eq 1 ] ; then
 fi
 
 # IP указан?
-echo "IP_LIST: $IP_LIST"
 if [ -z "$IP_LIST" ] ; then _output 2 "Не указаны адреса для проверки!" ; exit 1 ; fi
 
 for IP in $IP_LIST ; do
