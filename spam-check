@@ -57,7 +57,7 @@ IP_AND_FQDN_LIST=''				#		- Для временного хранения ip'шн
 IP_LIST=''					#		- Тут будут все IP'шники 
 MX_LIST=''					#		- Тут бубут все MX-записи (хранятся временно, для разрешения их в IP'шники)
 IS_MY_DNS=0					#		  Чтобы знать, что надо использовать указанный юзером DNS-сервер
-IS_TIME_OUT_ERROR=0				# -t	- Считать тайм ауты подключения к DNSBL ошибками и выводить в поток ошибок?
+IS_TIME_OUT_ERROR=1				# -t	- Считать тайм ауты подключения к DNSBL ошибками и выводить в поток ошибок?
 DNS_SERVER='208.67.222.222'			# -s	- DNS Server (OpenDNS.com), через который будет проверяться IP по DNSBL
 RESOLVCONF='/etc/resolv.conf'
 SHOW_IP_ONLY=0					# -p	- Только показать все IP'шники, которые будут проверены
@@ -212,24 +212,15 @@ _read_dnsbl() {
 # $1		Файл со списком DNSBL-серверов
 # output	Сообщение в случае ошибки
 # return	0
-	local IS_ERROR
 	local RESULT
 
-	IS_ERROR=0
-	if [ -n "$1" ] ; then
-		if [ -r "$1" ] ; then
-			RESULT="$DNSBL_LIST $($SED '/^[[:blank:]]*#\|^$/d' "$1")"
-			echo "${RESULT}"
-			return 0
-		else
-			RESULT="Файл $1 не существует, либо нет прав на чтение!"
-			[ "$IS_FILE" -eq "1" ] && echo "$RESULT" 			&& return 1
-			[ "$IS_FILE" -eq "2" ] && _output 2 "УВЕДОМЛЕНИЕ: $RESULT!" 	&& return 0
-		fi
-	fi	
-
-	echo "Тут не должно быть ошибки, но она есть... Напиши мне багрепорт, плиз."
-	return 1
+	if [ -r "$1" ] ; then
+		echo "$DNSBL_LIST $($SED '/^[[:blank:]]*#\|^$/d' "$1")"
+		return 0
+	fi
+	RESULT="Файл $1 не существует, либо нет прав на чтение!"
+	[ "$IS_FILE" -eq "1" ] && echo "$RESULT" 			&& return 1
+	[ "$IS_FILE" -eq "2" ] && _output 2 "УВЕДОМЛЕНИЕ: $RESULT!" 	&& return 0
 }
 
 _get_and_parse_dnsbl_return() {
@@ -237,6 +228,11 @@ _get_and_parse_dnsbl_return() {
 # $1		"Перевернутый" ip-адрес для проверки
 # output	Сообщение о результате проверки
 # return	0 or 1
+	local GPD
+	local RES_A
+	local RES_TXT
+	local RETURN_CODE=0
+
 	for DNSBL in $DNSBL_LIST ; do
 		GPD=$($HOST -t A $1.$DNSBL $DNS_SERVER)
 		RES_A=$(echo "$GPD" | $SED -n '/not\ found/p')
@@ -255,12 +251,8 @@ _get_and_parse_dnsbl_return() {
 				# Или может мы просто не можем достучаться до DNSBL-сервера?
 				RES_A=$(echo "$GPD" | $SED -n '/connection timed out/p')
 				if [ -n "$RES_A" ] ; then
-					if [ $IS_TIME_OUT_ERROR -gt 0 ] ; then
-						_output 2 "[ ERROR ]      - $DNSBL		- connection time out"
-					 	RETURN_CODE=1
-					else
-						_output 1 "[ ERROR ]      - $DNSBL		- connection time out"
-					fi
+					_output $IS_TIME_OUT_ERROR "[ ERROR ]      - $DNSBL		- connection time out"
+					[ $IS_TIME_OUT_ERROR -eq 2 ] && RETURN_CODE=1
 				else
 					_output 2 "Странно... Ты не должен был этого видеть... о_О Напиши мне багрепорт, плиз, укажи ${DNSBL}, версии sh, sed, host и самого скрипта, а так же какая у тебя ось и какие параметры были переданы скрипту. Заранее спасибо. Мое мыло: angel2s2ru@gmail.com"
 					RETURN_CODE=1
@@ -295,7 +287,7 @@ if [ $# -eq 0 ] ; then _help ; exit 1 ; fi
 while [ $# -gt 0 ]; do
 	case "$1" in
 		"-q"	) IS_QUIET=1 ; shift ;;
-		"-t"	) IS_TIME_OUT_ERROR=1 ; shift ;;
+		"-t"	) IS_TIME_OUT_ERROR=2 ; shift ;;
 		"-f"	) IS_FILE=1 ; DNSBL_FILE="$2" ; shift 2 ;;
 		"-i"	) IS_INET=1 ; shift ;;
 		"-I"	) IS_INET=2 ; shift ;;
@@ -319,6 +311,10 @@ if [ "+" == "${DNSBL_FILE:0:1}" ]; then
 	IS_FILE=2
 	DNSBL_FILE="${DNSBL_FILE/+}"
 fi
+if [ -z "$DNSBL_FILE" ]; then
+	_output 2 "Имя файла не указано. Если имя файла \"+\", укажите его как ./+"
+	exit 1;
+fi
 
 # Обрабатываем параметр --log первым, дабы зафиксировать все
 if [ "$USE_SYSLOG" -eq 0 -a "$USE_LOG" -eq 1 ] ; then
@@ -340,7 +336,7 @@ if [ "$IS_ONE_DNSBL" -ne "1" ]; then
 			exit 1;
 		fi
 	fi
-	[ "$IS_FILE" -eq "1" ] && DNSBL_LIST="${DNBL_LIST_RES}"
+	[ "$IS_FILE" -eq "1" ] && DNSBL_LIST="${DNSBL_LIST_RES}"
 	[ "$IS_INET" -eq "1" ] && DNSBL_LIST="$($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
 							$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp')"
 
