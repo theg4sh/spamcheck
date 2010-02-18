@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # 
 # 
 SCRIPT_NAME='spam-check'
@@ -38,13 +38,20 @@ HOST='/usr/bin/host'
 SORT='/usr/bin/sort'
 UNIQ='/usr/bin/uniq'
 ICONV='/usr/bin/iconv -f UTF-8 '
+PRINTF='/usr/bin/printf'
 LOGGER='/usr/bin/logger'
 
 # Имя машины, используется только для лог-файла
 HOSTNAME=$($SED "1q" /proc/sys/kernel/hostname) #uname -n
 
 # "Вшитый" список DNSBL для проверки
-DNSBL_LIST='abuse.rfc-ignorant.org access.redhawk.org aspews.ext.sorbs.net b.barracudacentral.org blackholes.brainerd.net blackholes.five-ten-sg.com blackholes.wirehub.net blacklist.junkemailfilter.com blacklist.sci.kun.nl blacklist.woody.ch bl.deadbeef.com bl.emailbasura.org block.dnsbl.sorbs.net bl.redhatgate.com bl.spamcannibal.org bl.spamcop.net bl.technovision.dk c10.rbl.hk cbl.abuseat.org cbl.anti-spam.org.cn cblless.anti-spam.org.cn cblplus.anti-spam.org.cn combined.njabl.org db.wpbl.info dialups.mail-abuse.org dialups.visi.com dnsbl-0.uceprotect.net dnsbl-1.uceprotect.net dnsbl-2.uceprotect.net dnsbl-3.uceprotect.net dnsbl.ahbl.org dnsbl.cyberlogic.net dnsbl.jammconsulting.com dnsbl.kempt.net dnsbl.njabl.org dnsbl.sorbs.net duinv.aupads.org dul.dnsbl.sorbs.net dul.ru fl.chickenboner.biz hil.habeas.com hostkarma.junkemailfilter.com http.dnsbl.sorbs.net http.opm.blitzed.org images.rbl.msrbl.net ips.backscatterer.org ircbl.ahbl.org ix.dnsbl.manitu.net korea.services.net l2.bbfh.ext.sorbs.net list.dnswl.org mail-abuse.blacklist.jippg.org map.spam-rbl.com misc.dnsbl.sorbs.net msgid.bl.gweep.ca multi.surbl.org multi.uribl.com no-more-funn.moensted.dk ohps.dnsbl.net.au omrs.dnsbl.net.au orid.dnsbl.net.au orvedb.aupads.org osps.dnsbl.net.au osrs.dnsbl.net.au owfs.dnsbl.net.au owps.dnsbl.net.au pbl.spamhaus.org phishing.rbl.msrbl.net probes.dnsbl.net.au proxy.bl.gweep.ca psbl.surriel.com query.bondedsender.org rbl.cluecentral.net rbl-plus.mail-abuse.org rbl.snark.net rdts.dnsbl.net.au relays.bl.gweep.ca relays.bl.kundenserver.de relays.mail-abuse.org relays.nether.net ricn.dnsbl.net.au rmst.dnsbl.net.au rot.blackhole.cantv.net rsbl.aupads.org satos.rbl.cluecentral.net sbl.csma.biz sbl.spamhaus.org sbl-xbl.spamhaus.org smtp.dnsbl.sorbs.net socks.dnsbl.sorbs.net socks.opm.blitzed.org sorbs.dnsbl.net.au spam.dnsbl.sorbs.net spamguard.leadmon.net spam.olsentech.net spamrbl.imp.ch spamsites.dnsbl.net.au spamsources.dnsbl.info spamsources.fabel.dk spam.wytnij.to t1.bl.dnsbl.net.au t1.dnsbl.net.au ubl.unsubscore.com ucepn.dnsbl.net.au virbl.bit.nl virbl.dnsbl.bit.nl virus.rbl.jp virus.rbl.msrbl.net web.dnsbl.sorbs.net whois.rfc-ignorant.org wingate.opm.blitzed.org wormrbl.imp.ch wpbl.dnsbl.net.au xbl.spamhaus.org zen.spamhaus.org zombie.dnsbl.sorbs.net rhsbl.sorbs.net'
+#  0 - по-умолчанию
+#  1 - дурнославящиеся
+#  2 - не доступны из некоторых мест
+LISTS[0]='abuse.rfc-ignorant.org access.redhawk.org aspews.ext.sorbs.net b.barracudacentral.org blackholes.brainerd.net blackholes.five-ten-sg.com blackholes.wirehub.net blacklist.junkemailfilter.com blacklist.sci.kun.nl blacklist.woody.ch bl.deadbeef.com bl.emailbasura.org block.dnsbl.sorbs.net bl.redhatgate.com bl.spamcannibal.org bl.spamcop.net bl.technovision.dk c10.rbl.hk cbl.abuseat.org cbl.anti-spam.org.cn cblless.anti-spam.org.cn cblplus.anti-spam.org.cn combined.njabl.org db.wpbl.info dialups.mail-abuse.org dialups.visi.com dnsbl-0.uceprotect.net dnsbl-1.uceprotect.net dnsbl-2.uceprotect.net dnsbl-3.uceprotect.net dnsbl.ahbl.org dnsbl.cyberlogic.net dnsbl.jammconsulting.com dnsbl.kempt.net dnsbl.njabl.org dnsbl.sorbs.net duinv.aupads.org dul.dnsbl.sorbs.net dul.ru fl.chickenboner.biz hil.habeas.com hostkarma.junkemailfilter.com http.dnsbl.sorbs.net http.opm.blitzed.org images.rbl.msrbl.net ips.backscatterer.org ircbl.ahbl.org ix.dnsbl.manitu.net korea.services.net l2.bbfh.ext.sorbs.net list.dnswl.org mail-abuse.blacklist.jippg.org map.spam-rbl.com misc.dnsbl.sorbs.net msgid.bl.gweep.ca multi.surbl.org multi.uribl.com no-more-funn.moensted.dk ohps.dnsbl.net.au omrs.dnsbl.net.au orid.dnsbl.net.au orvedb.aupads.org osps.dnsbl.net.au osrs.dnsbl.net.au owfs.dnsbl.net.au owps.dnsbl.net.au pbl.spamhaus.org phishing.rbl.msrbl.net probes.dnsbl.net.au proxy.bl.gweep.ca psbl.surriel.com query.bondedsender.org rbl.cluecentral.net rbl-plus.mail-abuse.org rbl.snark.net rdts.dnsbl.net.au relays.bl.gweep.ca relays.bl.kundenserver.de relays.mail-abuse.org relays.nether.net ricn.dnsbl.net.au rmst.dnsbl.net.au rot.blackhole.cantv.net rsbl.aupads.org satos.rbl.cluecentral.net sbl.csma.biz sbl.spamhaus.org sbl-xbl.spamhaus.org smtp.dnsbl.sorbs.net socks.dnsbl.sorbs.net socks.opm.blitzed.org sorbs.dnsbl.net.au spam.dnsbl.sorbs.net spamguard.leadmon.net spam.olsentech.net spamrbl.imp.ch spamsites.dnsbl.net.au spamsources.dnsbl.info spamsources.fabel.dk spam.wytnij.to t1.bl.dnsbl.net.au t1.dnsbl.net.au ubl.unsubscore.com ucepn.dnsbl.net.au virbl.bit.nl virbl.dnsbl.bit.nl virus.rbl.jp virus.rbl.msrbl.net web.dnsbl.sorbs.net whois.rfc-ignorant.org wingate.opm.blitzed.org wormrbl.imp.ch wpbl.dnsbl.net.au xbl.spamhaus.org zen.spamhaus.org zombie.dnsbl.sorbs.net rhsbl.sorbs.net'
+LISTS[1]=''
+LISTS[2]=''
+DNSBL_LIST=( $(echo ${LISTS[0]}) )
 
 # Параметры по умолчанию
 IS_QUIET=0					# -q	- Ничего не выводить
@@ -53,8 +60,8 @@ IS_ONE_DNSBL=0					# -d	- Указатель, что надо проверить
 IS_FILE=0					# -f	- Указатель, что используется файл
 DNSBL_FILE=''					#         Имя файла установленного параметром -f
 IS_INET=0					# -i	- Сграбить список DNSBL с сайта http://myiptest.com/
-IP_AND_FQDN_LIST=''				#		- Для временного хранения ip'шников и fqsn'ов
-IP_LIST=''					#		- Тут будут все IP'шники 
+IP_AND_FQDN_LIST=( )				#		- Для временного хранения ip'шников и fqsn'ов
+IP_LIST=( )					#		- Тут будут все IP'шники 
 MX_LIST=( )					#		- Тут бубут все MX-записи (хранятся временно, для разрешения их в IP'шники)
 IS_MY_DNS=0					#		  Чтобы знать, что надо использовать указанный юзером DNS-сервер
 IS_TIME_OUT_ERROR=1				# -t	- Считать тайм ауты подключения к DNSBL ошибками и выводить в поток ошибок?
@@ -63,14 +70,15 @@ RESOLVCONF='/etc/resolv.conf'
 SHOW_IP_ONLY=0					# -p	- Только показать все IP'шники, которые будут проверены
 
 USE_LOG=0					# --log [file]  - вести лог в файл, 
-							# либо если файл не указан, проверить системные настройки ведения лога на наличие строк содержащих $LOG_TAG 
-							# и использовать $LOGGER, иначе будет использован файл по умолчанию $LOG_FILE_DEFAULT
-USE_SYSLOG=0				# --slog        - выводить в syslog, игнорируя системные настройки;
-							# так же флаг устанавливается в случае если настроен вывод для $LOGGER (syslog, syslog-ng, rsyslog etc.)
-LOG_TAG="spamcheck"			# строка маркировки в логе
+						#+ либо если файл не указан, проверить системные настройки ведения лога на наличие строк содержащих $LOG_TAG 
+						#+ и использовать $LOGGER, иначе будет использован файл по умолчанию $LOG_FILE_DEFAULT
+USE_SYSLOG=0					# --slog        - выводить в syslog, игнорируя системные настройки;
+						#+ так же флаг устанавливается в случае если настроен вывод для $LOGGER (syslog, syslog-ng, rsyslog etc.)
+LOG_TAG="spamcheck"				# строка маркировки в логе
 LOG_FILE=''					# имя файла для лога
-LOG_FILE_DEFAULT="./$LOG_TAG.log"	#"$($DATE +spamcheck-%Y%m%d-%H%M%S.log)" # имя файла лога по умолчанию
+LOG_FILE_DEFAULT="./$LOG_TAG.log"		#"$($DATE +spamcheck-%Y%m%d-%H%M%S.log)" # имя файла лога по умолчанию
 
+OFFPOSITION="\033[55G"				# настройка смещения, установлено по-умолчанию, но позже вычисляется
 
 
 _output() {
@@ -82,19 +90,19 @@ _output() {
 
 	# Если обычный режим, то выводим инфу на консоль, иначе просто все игнорируем
 	# Вывод в любом случае будет перекодирован 
-	local MSG="$(echo "$2" | $ICONV)"
+	local MSG="$( $PRINTF "\033[1G$(echo "$2" | $ICONV)" )"
 	if [ $IS_QUIET -eq 0 ] ; then
 		if [ $1 -eq 2 ] ; then
-			echo "$MSG" 1>&2
+			echo "${MSG}" 1>&2
 		else
-			echo "$MSG"
+			echo "${MSG}"
 		fi
 	fi
 	if [ $USE_SYSLOG -eq 1 ] ; then
-		$LOGGER -t "$LOG_TAG" -- "$MSG"
+		$LOGGER -t "$LOG_TAG" -- "${MSG}"
 	elif [ "$USE_LOG" -eq 1 ] ; then
 		# можно добавить [$$] к $LOG_TAG, но pid будет постоянно разным
-		$DATE +"%b %m %T $HOSTNAME $LOG_TAG: $MSG" >> "$LOG_FILE"
+		$DATE +"%b %m %T $HOSTNAME $LOG_TAG: ${MSG}" >> "$LOG_FILE"
 	fi
 }
 
@@ -112,31 +120,32 @@ _usage() {
 # name		"Правила" использования скрипта
 # output	--//--
 # return	0
-	_output 1 "$SCRIPT_NAME [-q] [-l] [-d dnsbl | -f <file> | -i] [-I] [-f +<file>] [-s dns_server] [-t] [--log [file]|--slog] [--] [ip or domain-name ...]"
+	_output 1 "usage:  $SCRIPT_NAME [-q] [-l] [-d dnsbl | -f <file> | -i] [-I] [-f +<file>] [-s dns_server] [-t] [--log [file]|--slog] [--] [ip or domain-name ...]"
 }
 
 _help() {
 # name		Справка по использованию параметров скрипта
 # output	--//--
 # return	0
+	local OFFSET="\033[33G"
 	_usage
 	_output 1 ""
-	_output 1 "   -q		- Ничего не выводить"
-	_output 1 "   -l		- Показать список DNSBL-серверов"
-	_output 1 "   -p		- Показать список IP, которые должны быть проверены"
-	_output 1 "   -d dnsbl		- Проверить по указанному dnsbl"
-	_output 1 "   -f <file>		- Взять список DNSBL-серверов из файла"
-	_output 1 "   -f +<file>	- Тоже что и -f, но в добавление к текущему списку DNSBL"
-	_output 1 "   -i		- Сграбить список DNSBL с сайта http://myiptest.com/"
-	_output 1 "   -I		- Тоже что и -i, но в добавление к текущему списку DNSBL"
-	_output 1 "   -s		- Указать DNS-сервер, через который будет идти проверка"
-	_output 1 "   -t		- Считать Time Out'ы ошибкой"
-	_output 1 "   --log [file]	- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
-	_output 1 "     		  Подробнее на http://code.google.com/p/spamcheck/wiki/log"
-	_output 1 "   --slog	- Игнорировать программные настройки и вести системное логгирование"
-	_output 1 "   --		- Считается, что дальше идут только ip и/или доменные имена"
-	_output 1 "   [ip or domain-name ...]	- ip и/или доменные имена, которые нужно проверить"
-	_output 1 "   --version, --help, --usage	- без комментариев"
+	_output 1 "   -q				${OFFSET}- Ничего не выводить"
+	_output 1 "   -l				${OFFSET}- Показать список DNSBL-серверов"
+	_output 1 "   -p				${OFFSET}- Показать список IP, которые должны быть проверены"
+	_output 1 "   -d dnsbl				${OFFSET}- Проверить по указанному dnsbl"
+	_output 1 "   -f <file>				${OFFSET}- Взять список DNSBL-серверов из файла"
+	_output 1 "   -f +<file>			${OFFSET}- Тоже что и -f, но в добавление к текущему списку DNSBL"
+	_output 1 "   -i				${OFFSET}- Сграбить список DNSBL с сайта http://myiptest.com/"
+	_output 1 "   -I				${OFFSET}- Тоже что и -i, но в добавление к текущему списку DNSBL"
+	_output 1 "   -s				${OFFSET}- Указать DNS-сервер, через который будет идти проверка"
+	_output 1 "   -t				${OFFSET}- Считать Time Out'ы ошибкой"
+	_output 1 "   --log [file]			${OFFSET}- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
+	_output 1 "     				${OFFSET}  Подробнее на http://code.google.com/p/spamcheck/wiki/log"
+	_output 1 "   --slog				${OFFSET}- Игнорировать программные настройки и вести системное логгирование"
+	_output 1 "   --				${OFFSET}- Считается, что дальше идут только ip и/или доменные имена"
+	_output 1 "   [ip or domain-name ...]		${OFFSET}- ip и/или доменные имена, которые нужно проверить"
+	_output 1 "   --version, --help, --usage	${OFFSET}- без комментариев"
 }
 
 _bad_param() {
@@ -167,7 +176,7 @@ _build_ip_list() {
 # $1		ip-адрес
 # output	none
 # return	0
-	IP_AND_FQDN_LIST="$IP_AND_FQDN_LIST $*"
+	IP_AND_FQDN_LIST[${#IP_AND_FQDN_LIST[@]}]="$*"
 }
 
 ___check_and_build_ip_list() {
@@ -175,9 +184,9 @@ ___check_and_build_ip_list() {
 	# Заносим результат в переменную, для экономии трафика и повышения скорости работы скрипта
 	HOST_RESULT=$($HOST $1 $DNS_SERVER)
 	# Все полученные ip'шники кладем сюда...
-	IP_LIST="$IP_LIST $(echo "$HOST_RESULT" | $SED -n '/address/s/.\+address\ \([0-9\.]\+\)/\1/gp')"
+	IP_LIST=( ${IP_LIST[@]} $(echo "$HOST_RESULT" | $SED -n '/address/s/.\+address\ \([0-9\.]\+\)/\1/gp') )
 	# ...а сюда MX записи (или алиасы)
-	MX_LIST=( ${MX_LIST[@]} $(echo "$HOST_RESULT" | $SED -n '/handled/s/.\+\ [0-9]\+\ \(.\+\)\./\1/p') )
+	MX_LIST=( $(echo "$HOST_RESULT" | $SED -n '/handled/s/.\+\ [0-9]\+\ \(.\+\)\./\1/p') ${MX_LIST[@]} )
 }
 
 _check_ip_list() {
@@ -185,11 +194,11 @@ _check_ip_list() {
 # output	none
 # return	0
 	local IS_IP
-	for IP in $IP_AND_FQDN_LIST ; do
+	for IP in ${IP_AND_FQDN_LIST[@]} ; do
 		IS_IP=$(echo $IP | $SED -n '/^[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}$/p')
 		# если не пусто, значит у нас IP...
 		if [ -n "$IS_IP" ] ; then 
-			IP_LIST="$IP_LIST $IP"
+			IP_LIST[${#IP_LIST[@]}]=$IP
 		# ...иначе доменное имя
 		else
 			___check_and_build_ip_list $IP
@@ -198,11 +207,10 @@ _check_ip_list() {
 	# Вложенные циклы необходимы, чтобы получить IP'шники тех MX'ов, на запрос которых DNS возвращает другой MX
 	# (очень редкий случай, но бывает)
 	until [ ! ${#MX_LIST[@]} -gt 0 ]; do
-		___check_and_build_ip_list "${MX_LIST[0]}"
-		unset MX_LIST[0]
-		MX_LIST=( ${MX_LIST[@]} )
+		___check_and_build_ip_list "${MX_LIST[${#MX_LIST[@]}-1]}"
+		unset MX_LIST[${#MX_LIST[@]}-1]
 	done
-	IP_LIST="$(echo $IP_LIST | $SED -e 's/^[[:blank:]]\+//;s/[[:blank:]]\+$//;')"
+#	IP_LIST="$(echo $IP_LIST | $SED -e 's/^[[:blank:]]\+//;s/[[:blank:]]\+$//;')"
 }
 
 _read_dnsbl() {
@@ -213,7 +221,7 @@ _read_dnsbl() {
 	local RESULT
 
 	if [ -r "$1" ] ; then
-		echo "$DNSBL_LIST $($SED '/^[[:blank:]]*#\|^$/d' "$1")"
+		echo "${DNSBL_LIST[@]} $($SED '/^[[:blank:]]*#\|^$/d' "$1")"
 		return 0
 	fi
 	RESULT="Файл $1 не существует, либо нет прав на чтение!"
@@ -231,33 +239,42 @@ _get_and_parse_dnsbl_return() {
 	local RES_A
 	local RES_TXT
 	local RETURN_CODE=0
+	
 
-	for DNSBL in $DNSBL_LIST ; do
+	for DNSBL in ${DNSBL_LIST[@]} ; do
 		GPD=$($HOST -t A $1.$DNSBL $DNS_SERVER)
-		RES_A=$(echo "$GPD" | $SED -n '/not\ found/p')
-		# Нас нет в DNSBL :)
-		if [ -n "$RES_A" ] ; then
-			_output 1 "[ OK ]         - $DNSBL		- $(echo $RES_A | $SED 's/^.*\(not\ found.\+$\)/\1/')"
-		else
-			RES_A=$(echo "$GPD" | $SED -n '/\ has\ address\ /s/^.*address\ \([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\).*$/\1/p')
-			# Черт... У нас проблемы :(
-			if [ -n "$RES_A" ] ; then
-				# Узнаем подробности
-				RES_TXT=$($HOST -t TXT $1.$DNSBL $DNS_SERVER | $SED -n '/text/s/^.*\"\(.\+\)\".*$/\1/p')
-				_output 2 "[ +++SPAM+++ ] - $DNSBL		- ($RES_A) $RES_TXT"
-				RETURN_CODE=1
+		if [ $? -eq 1 ]; then
+			if [ -z "$(echo "$GPD" | $SED -n '/connection timed out/p')" ]; then
+				# Нас нет в DNSBL :)
+				_output 1 "[ OK ]         - $DNSBL${OFFPOSITION}- $(echo $GPD | $SED -n '/not found/s/^.*\(not\ found.\+$\)/\1/p')"
 			else
 				# Или может мы просто не можем достучаться до DNSBL-сервера?
-				RES_A=$(echo "$GPD" | $SED -n '/connection timed out/p')
-				if [ -n "$RES_A" ] ; then
-					_output $IS_TIME_OUT_ERROR "[ ERROR ]      - $DNSBL		- connection time out"
-					[ $IS_TIME_OUT_ERROR -eq 2 ] && RETURN_CODE=1
-				else
-					_output 2 "Странно... Ты не должен был этого видеть... о_О Напиши мне багрепорт, плиз, укажи ${DNSBL}, версии sh, sed, host и самого скрипта, а так же какая у тебя ось и какие параметры были переданы скрипту. Заранее спасибо. Мое мыло: angel2s2ru@gmail.com"
-					RETURN_CODE=1
-				fi
+				_output $IS_TIME_OUT_ERROR "[ ERROR ]      - $DNSBL${OFFPOSITION}- connection time out"
+				[ $IS_TIME_OUT_ERROR -eq 2 ] && RETURN_CODE=1
 			fi
+			continue
 		fi
+
+		# Черт... У нас проблемы :(
+
+		RES_A=$(echo "$GPD" | $SED -n '/\ has\ address\ /s/^.*address\ \([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\).*$/\1/p')
+		if [ -n "$RES_A" ] ; then
+			# Узнаем подробности
+			RES_TXT=$($HOST -t TXT $1.$DNSBL $DNS_SERVER | $SED -n '/text/s/^.*\"\(.\+\)\".*$/\1/p')
+			_output 2 "[ +++SPAM+++ ] - $DNSBL${OFFPOSITION}- ($RES_A) $RES_TXT"
+			RETURN_CODE=1
+			continue
+		fi
+
+		RES_A=$(echo "$GPD" | $SED -n '/\ has\ no\ A\ record/ip')
+		if [ -n "$RES_A" ]; then
+			
+			_output 2 "[ INFO ]       - $DNSBL${OFFPOSITION}- no A record"
+			continue
+		fi
+
+		_output 2 "Странно... Ты не должен был этого видеть... о_О Напиши мне багрепорт, плиз, укажи ${DNSBL}, версии sh, sed, host и самого скрипта, а так же какая у тебя ось и какие параметры были переданы скрипту. Заранее спасибо. Мое мыло: angel2s2ru@gmail.com"
+		RETURN_CODE=1
 	done
 	return $RETURN_CODE
 }
@@ -281,6 +298,15 @@ _log_set() {
 	return 0;
 }
 
+_printf_offset_fix() {
+# name		Определение смещения для форматированного вывода
+	local DNSBL_MAX_LEN=0
+	for D in ${DNSBL_LIST[@]}; do
+		[ ${#D} -gt ${DNSBL_MAX_LEN} ] && DNSBL_MAX_LEN=${#D}
+	done
+	OFFPOSITION="\033[$((18+$DNSBL_MAX_LEN+2))G"
+}
+
 # Парсим параметры запуска
 if [ $# -eq 0 ] ; then _help ; exit 1 ; fi
 while [ $# -gt 0 ]; do
@@ -290,7 +316,7 @@ while [ $# -gt 0 ]; do
 		"-f"	) IS_FILE=1 ; DNSBL_FILE="$2" ; shift 2 ;;
 		"-i"	) IS_INET=1 ; shift ;;
 		"-I"	) IS_INET=2 ; shift ;;
-		"-d"	) IS_ONE_DNSBL=1 ; DNSBL_LIST="$2" ; shift 2 ;;
+		"-d"	) IS_ONE_DNSBL=1 ; DNSBL_LIST=( "$2" ) ; shift 2 ;;
 		"-l"	) IS_DNSBL_PRINT=1 ; shift ;;
 		"-s"	) IS_MY_DNS=1 ; DNS_SERVER="$2" ; shift 2 ;;
 		"-p"	) SHOW_IP_ONLY=1 ; shift ;;
@@ -337,61 +363,62 @@ if [ "$IS_ONE_DNSBL" -ne "1" ]; then
 			exit 1;
 		fi
 	fi
-	[ "$IS_FILE" -eq "1" ] && DNSBL_LIST="${DNSBL_LIST_RES}"
-	[ "$IS_INET" -eq "1" ] && DNSBL_LIST="$($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
-							$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp')"
+	[ "$IS_FILE" -eq "1" ] && DNSBL_LIST=( ${DNSBL_LIST_RES} )
+	[ "$IS_INET" -eq "1" ] && DNSBL_LIST=( $($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
+							$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp') )
 
-	[ "$IS_FILE" -eq "2" ] && DNSBL_LIST="${DNSBL_LIST} ${DNBL_LIST_RES}"
-	[ "$IS_INET" -eq "2" ] && DNSBL_LIST="${DNSBL_LIST} $($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
-								$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp')"
+	[ "$IS_FILE" -eq "2" ] && DNSBL_LIST=( ${DNSBL_LIST[@]} ${DNSBL_LIST_RES} )
+	[ "$IS_INET" -eq "2" ] && DNSBL_LIST=( ${DNSBL_LIST[@]} $($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
+								$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp') )
 fi
 # эмуляция uniq, но без сортировки
-DNSBL_LIST=$(echo $DNSBL_LIST | $SED -e 's/[[:blank:]]\+/\n/g;/^$/d;' | $SORT | $UNIQ)
+DNSBL_LIST=( $(echo "${DNSBL_LIST[@]}" | $SED -e 's/[[:blank:]]\+/\n/g;' | $SORT | $UNIQ) )
 #DNSBL_LIST="$(echo $DNSBL_LIST | $SED -e ':a; s/\(^[^ ]\+\.[^ .]\+\) \(.\+\) \1/\2 \1/; ta;')"
 
 # Список DNSBL-серверов заполнен?
-if [ -z "$DNSBL_LIST" -a $IS_INET -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Возможно не удалось подкючиться к северу.' ; exit 1 ; fi
-if [ -z "$DNSBL_LIST" -a $IS_FILE -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Фозможно файл пустой.' ; exit 1 ; fi
-if [ -z "$DNSBL_LIST" ] ; then _output 2 'Список DNSBL-серверов пуст! Ты случаем в скрипте переменную $DNSBL_LIST не удалил?' ; exit 1 ; fi
+if [ "${#DNSBL_LIST[@]}" -eq "0" -a $IS_INET -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Возможно не удалось подкючиться к северу.' ; exit 1 ; fi
+if [ "${#DNSBL_LIST[@]}" -eq "0" -a $IS_FILE -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Фозможно файл пустой.' ; exit 1 ; fi
+if [ "${#DNSBL_LIST[@]}" -eq "0" ] ; then _output 2 'Список DNSBL-серверов пуст! Ты случаем в скрипте переменную $DNSBL_LIST не удалил?' ; exit 1 ; fi
 
 
 # Вывод списка DNSBL серверов, если на то был "запрос"
-if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "$DNSBL_LIST" | $SED 's/[[:blank:]]\+/\n/g' ; exit 0 ; fi
+if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "${DNSBL_LIST[@]}" | $SED -e "s/[[:blank:]]\+/\n/g"; exit 0 ; fi
 
-# Если юзер не указал свой dns-сервер и...
-if [ $IS_MY_DNS -eq 0 ] ; then
-# Если есть в системе resolv.conf...
-	if [ -r $RESOLVCONF ] ; then 
-		# ...выдираем из него IP'шники DNS-серверов...
-		NS=$($SED -n '/nameserver/s/[[:blank:]]*nameserver[[:blank:]]\+\([0-9\.]\+\)/\1/p' $RESOLVCONF)
-		# ...и проверяем их на доступность...
-		for NS_CURRENT in $NS ; do
-			# ...если хоть один доступен...
-			$PING $NS_CURRENT >/dev/null 2>&1
-			if [ $? -eq 0 ] ; then
-				# ...то будем юзать его
-				DNS_SERVER=$NS_CURRENT
-				break
-			fi
-		done
-	fi	# В противном случае будет использоваться DNS-сервер по дефолту (см. переменную $DNS_SERVER в разделе "Параметры по умолчанию")
-fi
+
+# Если юзер не указал свой dns-сервер и
+#+ если есть в системе resolv.conf...
+if [ $IS_MY_DNS -eq 0 -a -r $RESOLVCONF ] ; then 
+	# ...выдираем из него IP'шники DNS-серверов...
+	NS=$($SED -n '/nameserver/s/[[:blank:]]*nameserver[[:blank:]]\+\([0-9\.]\+\)/\1/p' $RESOLVCONF)
+	# ...и проверяем их на доступность...
+	for NS_CURRENT in $NS ; do
+		# ...если хоть один доступен...
+		$PING $NS_CURRENT >/dev/null 2>&1
+		if [ $? -eq 0 ] ; then
+			# ...то будем юзать его
+			DNS_SERVER=$NS_CURRENT
+			break
+		fi
+	done
+fi	# В противном случае будет использоваться DNS-сервер по дефолту (см. переменную $DNS_SERVER в разделе "Параметры по умолчанию")
 
 _check_ip_list
 
 # Только показать все IP'шники, которые будут проверены
 if [ $SHOW_IP_ONLY -eq 1 ] ; then
-	echo $IP_LIST | $SED 's/[[:blank:]]\+/\n/g'
+	echo "${IP_LIST[@]}" | $SED -e "s/[[:blank:]]\+/\n/g"
 	exit 0
 fi
 
 # IP указан?
-if [ -z "$IP_LIST" ] ; then _output 2 "Не указаны адреса для проверки!" ; exit 1 ; fi
+if [ "${#IP_LIST[@]}" -eq "0" ] ; then _output 2 "Не указаны адреса для проверки!" ; exit 1 ; fi
 
-for IP in $IP_LIST ; do
+_printf_offset_fix ;
+
+for IP in ${IP_LIST[@]} ; do
 	# Получаем "перевернутый" IP
 	R_IP=$(_reverse_ip $IP)
-	_output 1 "------------------------------------------$IP------------"
+	_output 1 "-------------------------------------------------------------------------\033[45G${IP}"
 	# Проверяем наши IP по спам-базам и выводим результат на консоль
 	_get_and_parse_dnsbl_return $R_IP
 	EXIT_CODE=$?
