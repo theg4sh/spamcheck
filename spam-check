@@ -38,7 +38,6 @@ HOST='/usr/bin/host'
 SORT='/usr/bin/sort'
 UNIQ='/usr/bin/uniq'
 ICONV='/usr/bin/iconv -f UTF-8 '
-PRINTF='/usr/bin/printf'
 LOGGER='/usr/bin/logger'
 
 # Имя машины, используется только для лог-файла
@@ -53,32 +52,33 @@ LISTS[1]=''
 LISTS[2]=''
 DNSBL_LIST=( $(echo ${LISTS[0]}) )
 
-# Параметры по умолчанию
-IS_QUIET=0					# -q	- Ничего не выводить
-IS_DNSBL_PRINT=0				# -l	- Вывести список dnsbl-серверов
-IS_ONE_DNSBL=0					# -d	- Указатель, что надо проверить по указанному DNSBL
-IS_FILE=0					# -f	- Указатель, что используется файл
-DNSBL_FILE=''					#         Имя файла установленного параметром -f
-IS_INET=0					# -i	- Сграбить список DNSBL с сайта http://myiptest.com/
-IP_AND_FQDN_LIST=( )				#		- Для временного хранения ip'шников и fqsn'ов
-IP_LIST=( )					#		- Тут будут все IP'шники 
-MX_LIST=( )					#		- Тут бубут все MX-записи (хранятся временно, для разрешения их в IP'шники)
-IS_MY_DNS=0					#		  Чтобы знать, что надо использовать указанный юзером DNS-сервер
-IS_TIME_OUT_ERROR=1				# -t	- Считать тайм ауты подключения к DNSBL ошибками и выводить в поток ошибок?
-DNS_SERVER='208.67.222.222'			# -s	- DNS Server (OpenDNS.com), через который будет проверяться IP по DNSBL
-RESOLVCONF='/etc/resolv.conf'
-SHOW_IP_ONLY=0					# -p	- Только показать все IP'шники, которые будут проверены
-
+# Установка параметров по-умолчанию
+IS_QUIET=0					# -q		- Ничего не выводить
+IS_DNSBL_PRINT=0				# -l		- Вывести список dnsbl-серверов
+IS_ONE_DNSBL=0					# -d <dnsbl>	- Указатель, что надо проверить по указанному DNSBL
+IS_FILE=0					# -f [+]<file>	- Указатель, что используется файл
+IS_INET=0					# -i		- Сграбить список DNSBL с сайта http://myiptest.com/
+IS_TIME_OUT_ERROR=1				# -t		- Считать тайм ауты подключения к DNSBL ошибками и выводить в поток ошибок?
+IS_MY_DNS=0					# Флаг, устанавливается, если указан -s
+DNS_SERVER='208.67.222.222'			# -s <dns>	- DNS Server (OpenDNS.com), через который будет проверяться IP по DNSBL
+SHOW_IP_ONLY=0					# -p		- Только показать все IP'шники, которые будут проверены
 USE_LOG=0					# --log [file]  - вести лог в файл, 
 						#+ либо если файл не указан, проверить системные настройки ведения лога на наличие строк содержащих $LOG_TAG 
 						#+ и использовать $LOGGER, иначе будет использован файл по умолчанию $LOG_FILE_DEFAULT
 USE_SYSLOG=0					# --slog        - выводить в syslog, игнорируя системные настройки;
 						#+ так же флаг устанавливается в случае если настроен вывод для $LOGGER (syslog, syslog-ng, rsyslog etc.)
+
+
+# Установка "непараметризованных" переменных по-умолчанию
+RESOLVCONF='/etc/resolv.conf'
+IP_LIST=( )					# Спосок IP-адресов 
+MX_LIST=( )					# Список MX-записей (хранятся временно, для разрешения их в IP'шники)
+IP_AND_FQDN_LIST=( )				# Для временного хранения ip'шников и fqsn'ов
+DNSBL_FILE=''					# Имя файла установленного параметром -f
 LOG_TAG="spamcheck"				# строка маркировки в логе
 LOG_FILE=''					# имя файла для лога
 LOG_FILE_DEFAULT="./$LOG_TAG.log"		#"$($DATE +spamcheck-%Y%m%d-%H%M%S.log)" # имя файла лога по умолчанию
-
-OFFPOSITION="\033[55G"				# настройка смещения, установлено по-умолчанию, но позже вычисляется
+SPACELINE=( '' '' '-------------------------' )	# массив строк для смещений вывода в главном цикле и ф-ии _get_and_parse_dnsbl_return
 
 
 _output() {
@@ -90,7 +90,7 @@ _output() {
 
 	# Если обычный режим, то выводим инфу на консоль, иначе просто все игнорируем
 	# Вывод в любом случае будет перекодирован 
-	local MSG="$( $PRINTF "\033[1G$(echo "$2" | $ICONV)" )"
+	local MSG="$(echo "$2" | $ICONV)"
 	if [ $IS_QUIET -eq 0 ] ; then
 		if [ $1 -eq 2 ] ; then
 			echo "${MSG}" 1>&2
@@ -134,11 +134,11 @@ _help() {
 	_output 1 "   -l				${OFFSET}- Показать список DNSBL-серверов"
 	_output 1 "   -p				${OFFSET}- Показать список IP, которые должны быть проверены"
 	_output 1 "   -d dnsbl				${OFFSET}- Проверить по указанному dnsbl"
-	_output 1 "   -f <file>				${OFFSET}- Взять список DNSBL-серверов из файла"
-	_output 1 "   -f +<file>			${OFFSET}- Тоже что и -f, но в добавление к текущему списку DNSBL"
+	_output 1 "   -f file				${OFFSET}- Взять список DNSBL-серверов из файла file"
+	_output 1 "   -f +file				${OFFSET}- Тоже что и -f, но в добавление к текущему списку DNSBL"
 	_output 1 "   -i				${OFFSET}- Сграбить список DNSBL с сайта http://myiptest.com/"
 	_output 1 "   -I				${OFFSET}- Тоже что и -i, но в добавление к текущему списку DNSBL"
-	_output 1 "   -s				${OFFSET}- Указать DNS-сервер, через который будет идти проверка"
+	_output 1 "   -s dns				${OFFSET}- Указать DNS-сервер, через который будет идти проверка"
 	_output 1 "   -t				${OFFSET}- Считать Time Out'ы ошибкой"
 	_output 1 "   --log [file]			${OFFSET}- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
 	_output 1 "     				${OFFSET}  Подробнее на http://code.google.com/p/spamcheck/wiki/log"
@@ -210,7 +210,6 @@ _check_ip_list() {
 		___check_and_build_ip_list "${MX_LIST[${#MX_LIST[@]}-1]}"
 		unset MX_LIST[${#MX_LIST[@]}-1]
 	done
-#	IP_LIST="$(echo $IP_LIST | $SED -e 's/^[[:blank:]]\+//;s/[[:blank:]]\+$//;')"
 }
 
 _read_dnsbl() {
@@ -246,10 +245,10 @@ _get_and_parse_dnsbl_return() {
 		if [ $? -eq 1 ]; then
 			if [ -z "$(echo "$GPD" | $SED -n '/connection timed out/p')" ]; then
 				# Нас нет в DNSBL :)
-				_output 1 "[ OK ]         - $DNSBL${OFFPOSITION}- $(echo $GPD | $SED -n '/not found/s/^.*\(not\ found.\+$\)/\1/p')"
+				_output 1 "[ OK ]         - $DNSBL${SPACELINE[0]:${#DNSBL}}  - $(echo $GPD | $SED -n '/not found/s/^.*\(not\ found.\+$\)/\1/p')"
 			else
 				# Или может мы просто не можем достучаться до DNSBL-сервера?
-				_output $IS_TIME_OUT_ERROR "[ ERROR ]      - $DNSBL${OFFPOSITION}- connection time out"
+				_output $IS_TIME_OUT_ERROR "[ ERROR ]      - $DNSBL${SPACELINE[0]:${#DNSBL}}  - connection time out"
 				[ $IS_TIME_OUT_ERROR -eq 2 ] && RETURN_CODE=1
 			fi
 			continue
@@ -261,15 +260,14 @@ _get_and_parse_dnsbl_return() {
 		if [ -n "$RES_A" ] ; then
 			# Узнаем подробности
 			RES_TXT=$($HOST -t TXT $1.$DNSBL $DNS_SERVER | $SED -n '/text/s/^.*\"\(.\+\)\".*$/\1/p')
-			_output 2 "[ +++SPAM+++ ] - $DNSBL${OFFPOSITION}- ($RES_A) $RES_TXT"
+			_output 2 "[ +++SPAM+++ ] - $DNSBL${SPACELINE[0]:${#DNSBL}}  - ($RES_A) $RES_TXT"
 			RETURN_CODE=1
 			continue
 		fi
 
 		RES_A=$(echo "$GPD" | $SED -n '/\ has\ no\ A\ record/ip')
 		if [ -n "$RES_A" ]; then
-			
-			_output 2 "[ INFO ]       - $DNSBL${OFFPOSITION}- no A record"
+			_output 2 "[ INFO ]       - $DNSBL${SPACELINE[0]:${#DNSBL}}  - no A record"
 			continue
 		fi
 
@@ -300,11 +298,12 @@ _log_set() {
 
 _printf_offset_fix() {
 # name		Определение смещения для форматированного вывода
-	local DNSBL_MAX_LEN=0
 	for D in ${DNSBL_LIST[@]}; do
-		[ ${#D} -gt ${DNSBL_MAX_LEN} ] && DNSBL_MAX_LEN=${#D}
+		if [ ${#D} -gt ${#SPACELINE[0]} ]; then
+		  SPACELINE[0]="$(echo "${D}" | $SED -e 's/./ /g;')";
+		  SPACELINE[1]="$(echo "${D}" | $SED -e 's/./-/g;')";
+		fi
 	done
-	OFFPOSITION="\033[$((18+$DNSBL_MAX_LEN+2))G"
 }
 
 # Парсим параметры запуска
@@ -418,7 +417,7 @@ _printf_offset_fix ;
 for IP in ${IP_LIST[@]} ; do
 	# Получаем "перевернутый" IP
 	R_IP=$(_reverse_ip $IP)
-	_output 1 "-------------------------------------------------------------------------\033[45G${IP}"
+	_output 1 "----------------${SPACELINE[1]} ${IP} ${SPACELINE[2]:${#IP}}"
 	# Проверяем наши IP по спам-базам и выводим результат на консоль
 	_get_and_parse_dnsbl_return $R_IP
 	EXIT_CODE=$?
