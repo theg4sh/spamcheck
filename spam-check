@@ -127,25 +127,24 @@ _help() {
 # name		Справка по использованию параметров скрипта
 # output	--//--
 # return	0
-	local OFFSET="\033[33G"
 	_usage
 	_output 1 ""
-	_output 1 "   -q				${OFFSET}- Ничего не выводить"
-	_output 1 "   -l				${OFFSET}- Показать список DNSBL-серверов"
-	_output 1 "   -p				${OFFSET}- Показать список IP, которые должны быть проверены"
-	_output 1 "   -d dnsbl				${OFFSET}- Проверить по указанному dnsbl"
-	_output 1 "   -f file				${OFFSET}- Взять список DNSBL-серверов из файла file"
-	_output 1 "   -f +file				${OFFSET}- Тоже что и -f, но в добавление к текущему списку DNSBL"
-	_output 1 "   -i				${OFFSET}- Сграбить список DNSBL с сайта http://myiptest.com/"
-	_output 1 "   -I				${OFFSET}- Тоже что и -i, но в добавление к текущему списку DNSBL"
-	_output 1 "   -s dns				${OFFSET}- Указать DNS-сервер, через который будет идти проверка"
-	_output 1 "   -t				${OFFSET}- Считать Time Out'ы ошибкой"
-	_output 1 "   --log [file]			${OFFSET}- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
-	_output 1 "     				${OFFSET}  Подробнее на http://code.google.com/p/spamcheck/wiki/log"
-	_output 1 "   --slog				${OFFSET}- Игнорировать программные настройки и вести системное логгирование"
-	_output 1 "   --				${OFFSET}- Считается, что дальше идут только ip и/или доменные имена"
-	_output 1 "   [ip or domain-name ...]		${OFFSET}- ip и/или доменные имена, которые нужно проверить"
-	_output 1 "   --version, --help, --usage	${OFFSET}- без комментариев"
+	_output 1 "   -q				- Ничего не выводить"
+	_output 1 "   -l				- Показать список DNSBL-серверов"
+	_output 1 "   -p				- Показать список IP, которые должны быть проверены"
+	_output 1 "   -d dnsbl			- Проверить по указанному dnsbl"
+	_output 1 "   -f file			- Взять список DNSBL-серверов из файла file"
+	_output 1 "   -f +file			- Тоже что и -f, но в добавление к текущему списку DNSBL"
+	_output 1 "   -i				- Сграбить список DNSBL с сайта http://myiptest.com/"
+	_output 1 "   -I				- Тоже что и -i, но в добавление к текущему списку DNSBL"
+	_output 1 "   -s dns			- Указать DNS-сервер, через который будет идти проверка"
+	_output 1 "   -t				- Считать Time Out'ы ошибкой"
+	_output 1 "   --log [file]			- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
+	_output 1 "     				  Подробнее на http://code.google.com/p/spamcheck/wiki/log"
+	_output 1 "   --slog			- Игнорировать программные настройки и вести системное логгирование"
+	_output 1 "   --				- Считается, что дальше идут только ip и/или доменные имена"
+	_output 1 "   [ip or domain-name ...]	- ip и/или доменные имена, которые нужно проверить"
+	_output 1 "   --version, --help, --usage	- без комментариев"
 }
 
 _bad_param() {
@@ -239,7 +238,6 @@ _get_and_parse_dnsbl_return() {
 	local RES_TXT
 	local RETURN_CODE=0
 	
-
 	for DNSBL in ${DNSBL_LIST[@]} ; do
 		GPD=$($HOST -t A $1.$DNSBL $DNS_SERVER)
 		if [ $? -eq 1 ]; then
@@ -255,7 +253,6 @@ _get_and_parse_dnsbl_return() {
 		fi
 
 		# Черт... У нас проблемы :(
-
 		RES_A=$(echo "$GPD" | $SED -n '/\ has\ address\ /s/^.*address\ \([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\).*$/\1/p')
 		if [ -n "$RES_A" ] ; then
 			# Узнаем подробности
@@ -388,7 +385,7 @@ if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "${DNSBL_LIST[@]}" | $SED -e "s/[[:blan
 #+ если есть в системе resolv.conf...
 if [ $IS_MY_DNS -eq 0 -a -r $RESOLVCONF ] ; then 
 	# ...выдираем из него IP'шники DNS-серверов...
-	NS=$($SED -n '/nameserver/s/[[:blank:]]*nameserver[[:blank:]]\+\([0-9\.]\+\)/\1/p' $RESOLVCONF)
+	NS=$($SED -n '/nameserver/s/.*[[:blank:]]\+\([0-9\.]\+\)/\1/p' $RESOLVCONF)
 	# ...и проверяем их на доступность...
 	for NS_CURRENT in $NS ; do
 		# ...если хоть один доступен...
@@ -414,13 +411,14 @@ if [ "${#IP_LIST[@]}" -eq "0" ] ; then _output 2 "Не указаны адрес
 
 _printf_offset_fix ;
 
+EXIT_CODE=0
 for IP in ${IP_LIST[@]} ; do
 	# Получаем "перевернутый" IP
 	R_IP=$(_reverse_ip $IP)
 	_output 1 "----------------${SPACELINE[1]} ${IP} ${SPACELINE[2]:${#IP}}"
 	# Проверяем наши IP по спам-базам и выводим результат на консоль
 	_get_and_parse_dnsbl_return $R_IP
-	EXIT_CODE=$?
+	[ $EXIT_CODE -eq 0 ] && EXIT_CODE=$?
 done
 exit $EXIT_CODE
 
