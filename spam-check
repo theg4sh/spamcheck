@@ -67,6 +67,7 @@ USE_LOG=0					# --log [file]  - вести лог в файл,
 						#+ и использовать $LOGGER, иначе будет использован файл по умолчанию $LOG_FILE_DEFAULT
 USE_SYSLOG=0					# --slog        - выводить в syslog, игнорируя системные настройки;
 						#+ так же флаг устанавливается в случае если настроен вывод для $LOGGER (syslog, syslog-ng, rsyslog etc.)
+DISABLE_THREADS=0				# --no-threads  - отключение потоковой обработки текущего IP
 
 
 # Установка "непараметризованных" переменных по-умолчанию
@@ -80,6 +81,18 @@ LOG_FILE=''					# имя файла для лога
 LOG_FILE_DEFAULT="./$LOG_TAG.log"		#"$($DATE +spamcheck-%Y%m%d-%H%M%S.log)" # имя файла лога по умолчанию
 SPACELINE=( '' '' '-------------------------' )	# массив строк для смещений вывода в главном цикле и ф-ии _get_and_parse_dnsbl_return
 
+
+# Catch signals on terminate
+_kill_threads() {
+	rm -f $PIDSEND
+	killall -9 $(echo "${0}" | sed "s/.*\///g;")
+}
+trap "_kill_threads" INT KILL TERM QUIT
+
+_exit() {
+	rm -f $PIDSEND
+	exit $1
+}
 
 _output() {
 # name		Конвертирует строку в текущую локаль из UTF-8 и выводит строку на стандартный поток либо поток ошибок
@@ -120,7 +133,7 @@ _usage() {
 # name		"Правила" использования скрипта
 # output	--//--
 # return	0
-	_output 1 "usage:  $SCRIPT_NAME [-q] [-l] [-d dnsbl | -f <file> | -i] [-I] [-f +<file>] [-s dns_server] [-t] [--log [file]|--slog] [--] [ip or domain-name ...]"
+	_output 1 "usage:  $SCRIPT_NAME [-q] [-l] [-d dnsbl | -f <file> | -i] [-I] [-f +<file>] [-s dns_server] [-t] [--log [file]|--slog] [--no-threads] [--] [ip or domain-name ...]"
 }
 
 _help() {
@@ -142,6 +155,7 @@ _help() {
 	_output 1 "   --log [file]			- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
 	_output 1 "     				  Подробнее на http://code.google.com/p/spamcheck/wiki/log"
 	_output 1 "   --slog			- Игнорировать программные настройки и вести системное логгирование"
+	_output 1 "   --no-threads  		- отключение потоковой обработки текущего IP"
 	_output 1 "   --				- Считается, что дальше идут только ip и/или доменные имена"
 	_output 1 "   [ip or domain-name ...]	- ip и/или доменные имена, которые нужно проверить"
 	_output 1 "   --version, --help, --usage	- без комментариев"
@@ -159,7 +173,7 @@ _bad_params_combine() {
 # output	--//--
 # return	0
 	_output 2 "Не совместимые параметры!"
-	exit 1
+	_exit 1
 }
 
 _reverse_ip() {
@@ -205,7 +219,7 @@ _check_ip_list() {
 	done
 	# Вложенные циклы необходимы, чтобы получить IP'шники тех MX'ов, на запрос которых DNS возвращает другой MX
 	# (очень редкий случай, но бывает)
-	until [ ! ${#MX_LIST[@]} -gt 0 ]; do
+	while [ ${#MX_LIST[@]} -gt 0 ]; do
 		___check_and_build_ip_list "${MX_LIST[${#MX_LIST[@]}-1]}"
 		unset MX_LIST[${#MX_LIST[@]}-1]
 	done
@@ -228,50 +242,48 @@ _read_dnsbl() {
 	[ "$IS_FILE" -eq "2" ] && _output 2 "УВЕДОМЛЕНИЕ: $RESULT!" 	&& return 0
 }
 
-_get_and_parse_dnsbl_return() {
+_parse_thread() {
 # name		Получает ответ от DNSBL сервера, парсит его и выводим соответствующую информацию
-# $1		"Перевернутый" ip-адрес для проверки
-# output	Сообщение о результате проверки
-# return	0 or 1
+# $1		Перевернутый IP
+# $2		DNSBL
+# output	Сообщение о результате
+# return	1 | 0   (Done | Error)
 	local GPD
 	local RES_A
 	local RES_TXT
-	local RETURN_CODE=0
-	
-	for DNSBL in ${DNSBL_LIST[@]} ; do
-		GPD=$($HOST -t A $1.$DNSBL $DNS_SERVER)
-		if [ $? -eq 1 ]; then
-			if [ -z "$(echo "$GPD" | $SED -n '/connection timed out/p')" ]; then
-				# Нас нет в DNSBL :)
-				_output 1 "[ OK ]         - $DNSBL${SPACELINE[0]:${#DNSBL}}  - $(echo $GPD | $SED -n '/not found/s/^.*\(not\ found.\+$\)/\1/p')"
-			else
-				# Или может мы просто не можем достучаться до DNSBL-сервера?
-				_output $IS_TIME_OUT_ERROR "[ ERROR ]      - $DNSBL${SPACELINE[0]:${#DNSBL}}  - connection time out"
-				[ $IS_TIME_OUT_ERROR -eq 2 ] && RETURN_CODE=1
-			fi
-			continue
-		fi
+	local R_IP=$1
+	local DNSBL=$2
 
-		# Черт... У нас проблемы :(
-		RES_A=$(echo "$GPD" | $SED -n '/\ has\ address\ /s/^.*address\ \([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\).*$/\1/p')
-		if [ -n "$RES_A" ] ; then
-			# Узнаем подробности
-			RES_TXT=$($HOST -t TXT $1.$DNSBL $DNS_SERVER | $SED -n '/text/s/^.*\"\(.\+\)\".*$/\1/p')
-			_output 2 "[ +++SPAM+++ ] - $DNSBL${SPACELINE[0]:${#DNSBL}}  - ($RES_A) $RES_TXT"
-			RETURN_CODE=1
-			continue
+	GPD=$($HOST -t A $IP.$DNSBL $DNS_SERVER)
+	if [ $? -eq 1 ]; then
+		if [ -z "$(echo "$GPD" | $SED -n '/connection timed out/p')" ]; then
+			# Нас нет в DNSBL :)
+			_output 1 "[ OK ]         - $DNSBL${SPACELINE[0]:${#DNSBL}}  - $(echo $GPD | $SED -n '/not found/s/^.*\(not\ found.\+$\)/\1/p')"
+		else
+			# Или может мы просто не можем достучаться до DNSBL-сервера?
+			_output $IS_TIME_OUT_ERROR "[ ERROR ]      - $DNSBL${SPACELINE[0]:${#DNSBL}}  - connection time out"
+			[ $IS_TIME_OUT_ERROR -eq 2 ] && return 1
 		fi
+		return 0
+	fi
 
-		RES_A=$(echo "$GPD" | $SED -n '/\ has\ no\ A\ record/ip')
-		if [ -n "$RES_A" ]; then
-			_output 2 "[ INFO ]       - $DNSBL${SPACELINE[0]:${#DNSBL}}  - no A record"
-			continue
-		fi
+	# Черт... У нас проблемы :(
+	RES_A=$(echo "$GPD" | $SED -n '/\ has\ address\ /s/^.*address\ \([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\).*$/\1/p')
+	if [ -n "$RES_A" ] ; then
+		# Узнаем подробности
+		RES_TXT=$($HOST -t TXT $IP.$DNSBL $DNS_SERVER | $SED -n '/text/s/^.*\"\(.\+\)\".*$/\1/p')
+		_output 2 "[ +++SPAM+++ ] - $DNSBL${SPACELINE[0]:${#DNSBL}}  - ($RES_A) $RES_TXT"
+		return 1
+	fi
 
-		_output 2 "Странно... Ты не должен был этого видеть... о_О Напиши мне багрепорт, плиз, укажи ${DNSBL}, версии sh, sed, host и самого скрипта, а так же какая у тебя ось и какие параметры были переданы скрипту. Заранее спасибо. Мое мыло: angel2s2ru@gmail.com"
-		RETURN_CODE=1
-	done
-	return $RETURN_CODE
+	RES_A=$(echo "$GPD" | $SED -n '/\ has\ no\ A\ record/ip')
+	if [ -n "$RES_A" ]; then
+		_output 2 "[ INFO ]       - $DNSBL${SPACELINE[0]:${#DNSBL}}  - no A record"
+		return 0
+	fi
+
+	_output 2 "Странно... Ты не должен был этого видеть... о_О Напиши мне багрепорт, плиз, укажи ${DNSBL}, версии sh, sed, host и самого скрипта, а так же какая у тебя ось и какие параметры были переданы скрипту. Заранее спасибо. Мое мыло: angel2s2ru@gmail.com"
+	return 1
 }
 
 _log_set() {
@@ -304,7 +316,7 @@ _printf_offset_fix() {
 }
 
 # Парсим параметры запуска
-if [ $# -eq 0 ] ; then _help ; exit 1 ; fi
+if [ $# -eq 0 ] ; then _help ; _exit 1 ; fi
 while [ $# -gt 0 ]; do
 	case "$1" in
 		"-q"	) IS_QUIET=1 ; shift ;;
@@ -317,13 +329,14 @@ while [ $# -gt 0 ]; do
 		"-s"	) IS_MY_DNS=1 ; DNS_SERVER="$2" ; shift 2 ;;
 		"-p"	) SHOW_IP_ONLY=1 ; shift ;;
 		# При добавлении/изменении имен параметров обновите строку для $SED
-		"--log" ) USE_LOG=1 ; shift ; [ -n "$(echo "$1" | $SED -e '/^-[qtfiIdlsp-]$/d;/^--\|--version\|--help\|--usage\|--slog\|--log$/d')" ] && LOG_FILE="$1" && shift ;;
+		"--log" ) USE_LOG=1 ; shift ; [ -n "$(echo "$1" | $SED -e '/^-[qtfiIdlsp-]$/d;/^--\|--version\|--help\|--usage\|--slog\|--log\|--no-threads$/d')" ] && LOG_FILE="$1" && shift ;;
 		"--slog") USE_SYSLOG=1 ; shift ;;
+		"--no-threads") DISABLE_THREADS=1 ; shift ;;
 		"--"	) shift ; _build_ip_list $* ; break ;;
-		"--version"	) _version ; exit 255 ;;
-		"--help"	) _help ; exit 255 ;;
-		"--usage"	) _usage ; exit 255 ;;
-		-*		) _bad_param $1 ; exit 1 ;;
+		"--version"	) _version ; _exit 255 ;;
+		"--help"	) _help ; _exit 255 ;;
+		"--usage"	) _usage ; _exit 255 ;;
+		-*		) _bad_param $1 ; _exit 1 ;;
 		*		) _build_ip_list $1 ; shift ;;
 	esac
 done
@@ -335,13 +348,13 @@ if [ "$IS_FILE" -ne "0" ]; then
 	fi
 	if [ -z "$DNSBL_FILE" ]; then
 		_output 2 "Имя файла не указано. Если имя файла \"+\", укажите его как ./+"
-		exit 1;
+		_exit 1;
 	fi
 fi
 
 # Обрабатываем параметр --log первым, дабы зафиксировать все
 if [ "$USE_SYSLOG" -eq 0 -a "$USE_LOG" -eq 1 ] ; then
-	_log_set || exit 1;
+	_log_set || _exit 1;
 fi
 
 # Проверка на (не)совместимость параметров
@@ -356,7 +369,7 @@ if [ "$IS_ONE_DNSBL" -ne "1" ]; then
 		DNSBL_LIST_RES="$(_read_dnsbl "$DNSBL_FILE")"
 		if [ "$?" -eq "1" ]; then
 			_output 2 "${DNSBL_LIST_RES}"
-			exit 1;
+			_exit 1;
 		fi
 	fi
 	[ "$IS_FILE" -eq "1" ] && DNSBL_LIST=( ${DNSBL_LIST_RES} )
@@ -367,18 +380,18 @@ if [ "$IS_ONE_DNSBL" -ne "1" ]; then
 	[ "$IS_INET" -eq "2" ] && DNSBL_LIST=( ${DNSBL_LIST[@]} $($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
 								$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp') )
 fi
-# эмуляция uniq, но без сортировки
 DNSBL_LIST=( $(echo "${DNSBL_LIST[@]}" | $SED -e 's/[[:blank:]]\+/\n/g;' | $SORT | $UNIQ) )
+# эмуляция uniq, но без сортировки
 #DNSBL_LIST="$(echo $DNSBL_LIST | $SED -e ':a; s/\(^[^ ]\+\.[^ .]\+\) \(.\+\) \1/\2 \1/; ta;')"
 
 # Список DNSBL-серверов заполнен?
-if [ "${#DNSBL_LIST[@]}" -eq "0" -a $IS_INET -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Возможно не удалось подкючиться к северу.' ; exit 1 ; fi
-if [ "${#DNSBL_LIST[@]}" -eq "0" -a $IS_FILE -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Фозможно файл пустой.' ; exit 1 ; fi
-if [ "${#DNSBL_LIST[@]}" -eq "0" ] ; then _output 2 'Список DNSBL-серверов пуст! Ты случаем в скрипте переменную $DNSBL_LIST не удалил?' ; exit 1 ; fi
+if [ "${#DNSBL_LIST[@]}" -eq "0" -a $IS_INET -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Возможно не удалось подкючиться к северу.' ; _exit 1 ; fi
+if [ "${#DNSBL_LIST[@]}" -eq "0" -a $IS_FILE -eq 1 ] ; then _output 2 'Список DNSBL-серверов пуст! Фозможно файл пустой.' ; _exit 1 ; fi
+if [ "${#DNSBL_LIST[@]}" -eq "0" ] ; then _output 2 'Список DNSBL-серверов пуст! Ты случаем в скрипте переменную $DNSBL_LIST не удалил?' ; _exit 1 ; fi
 
 
 # Вывод списка DNSBL серверов, если на то был "запрос"
-if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "${DNSBL_LIST[@]}" | $SED -e "s/[[:blank:]]\+/\n/g"; exit 0 ; fi
+if [ $IS_DNSBL_PRINT -gt 0 ] ; then echo "${DNSBL_LIST[@]}" | $SED -e "s/[[:blank:]]\+/\n/g"; _exit 0 ; fi
 
 
 # Если юзер не указал свой dns-сервер и
@@ -403,22 +416,26 @@ _check_ip_list
 # Только показать все IP'шники, которые будут проверены
 if [ $SHOW_IP_ONLY -eq 1 ] ; then
 	echo "${IP_LIST[@]}" | $SED -e "s/[[:blank:]]\+/\n/g"
-	exit 0
+	_exit 0
 fi
 
 # IP указан?
-if [ "${#IP_LIST[@]}" -eq "0" ] ; then _output 2 "Не указаны адреса для проверки!" ; exit 1 ; fi
+if [ "${#IP_LIST[@]}" -eq "0" ] ; then _output 2 "Не указаны адреса для проверки!" ; _exit 1 ; fi
 
 _printf_offset_fix ;
 
-EXIT_CODE=0
+PIDSEND=$(mktemp -q)
+echo 0 > $PIDSEND
 for IP in ${IP_LIST[@]} ; do
 	# Получаем "перевернутый" IP
 	R_IP=$(_reverse_ip $IP)
 	_output 1 "----------------${SPACELINE[1]} ${IP} ${SPACELINE[2]:${#IP}}"
 	# Проверяем наши IP по спам-базам и выводим результат на консоль
-	_get_and_parse_dnsbl_return $R_IP
-	[ $EXIT_CODE -eq 0 ] && EXIT_CODE=$?
+        for DNSBL in ${DNSBL_LIST[@]} ; do
+		( _parse_thread "$R_IP" "$DNSBL" || echo 1 > $PIDSEND ) &
+		[ $DISABLE_THREADS -eq 1 ] && wait
+        done
+	wait
 done
-exit $EXIT_CODE
+_exit $($SED '' $PIDSEND)
 
