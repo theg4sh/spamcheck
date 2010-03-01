@@ -6,6 +6,7 @@
 	* etc
 
 *** В случае не предвиденной ошибки, сообщать линк на вики-доку на google codes и провить отписаться в issue
+	* https://code.google.com/p/spamcheck/issues/entry?template=BugReport
 
 *** Добавить новые DNSBL'ы:
 	* http://stats.dnsbl.com/

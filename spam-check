@@ -340,6 +340,7 @@ while [ $# -gt 0 ]; do
 		*		) _build_ip_list $1 ; shift ;;
 	esac
 done
+
 if [ "$IS_FILE" -ne "0" ]; then
 	# Определяем тут же, является ли $DNSBL_FILE добавлением к существующему blacklist`у
 	if [ "+" == "${DNSBL_FILE:0:1}" ]; then
