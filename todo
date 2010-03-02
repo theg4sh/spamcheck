@@ -5,9 +5,6 @@
 	* те что возвращают servfail
 	* etc
 
-*** В случае не предвиденной ошибки, сообщать линк на вики-доку на google codes и провить отписаться в issue
-	* https://code.google.com/p/spamcheck/issues/entry?template=BugReport
-
 *** Добавить новые DNSBL'ы:
 	* http://stats.dnsbl.com/
 	* http://multirbl.valli.org/lookup/89.190.251.45.html (частично)
@@ -50,4 +47,8 @@
 *** Вывод не только на консоль, но и в logger (для отправки вывода в файл или в syslog)
 
 *** Научить объеденияться между собой -i, -l и внутреннюю базу
+
+*** В случае не предвиденной ошибки, сообщать линк на вики-доку на google codes и провить отписаться в issue
+	* ~https://code.google.com/p/spamcheck/issues/entry?template=BugReport~
+	* https://code.google.com/p/spamcheck/wiki/BugReport
 
