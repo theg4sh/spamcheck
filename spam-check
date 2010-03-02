@@ -75,7 +75,7 @@ RESOLVCONF='/etc/resolv.conf'
 IP_LIST=( )					# Спосок IP-адресов 
 MX_LIST=( )					# Список MX-записей (хранятся временно, для разрешения их в IP'шники)
 IP_AND_FQDN_LIST=( )				# Для временного хранения ip'шников и fqsn'ов
-DNSBL_FILE=''					# Имя файла установленного параметром -f
+DNSBL_FILE=( )					# Имя файла установленного параметром -f
 LOG_TAG="spamcheck"				# строка маркировки в логе
 LOG_FILE=''					# имя файла для лога
 LOG_FILE_DEFAULT="./$LOG_TAG.log"		#"$($DATE +spamcheck-%Y%m%d-%H%M%S.log)" # имя файла лога по умолчанию
@@ -133,7 +133,7 @@ _usage() {
 # name		"Правила" использования скрипта
 # output	--//--
 # return	0
-	_output 1 "usage:  $SCRIPT_NAME [-q] [-l] [-d dnsbl | -f <file> | -i] [-I] [-f +<file>] [-s dns_server] [-t] [--log [file]|--slog] [--no-threads] [--] [ip or domain-name ...]"
+	_output 1 "usage:  $SCRIPT_NAME [-q] [-l] [-d dnsbl | -f file | -i] [-I] [-F file] [-s dns_server] [-t] [--log [file]|--slog] [--no-threads] [--] [ip or domain-name ...]"
 }
 
 _help() {
@@ -147,10 +147,10 @@ _help() {
 	_output 1 "   -p				- Показать список IP, которые должны быть проверены"
 	_output 1 "   -d dnsbl			- Проверить по указанному dnsbl"
 	_output 1 "   -f file			- Взять список DNSBL-серверов из файла file"
-	_output 1 "   -f +file			- Тоже что и -f, но в добавление к текущему списку DNSBL"
+	_output 1 "   -F file			- Тоже что и -f, но в добавление к текущему списку DNSBL"
 	_output 1 "   -i				- Сграбить список DNSBL с сайта http://myiptest.com/"
 	_output 1 "   -I				- Тоже что и -i, но в добавление к текущему списку DNSBL"
-	_output 1 "   -s dns			- Указать DNS-сервер, через который будет идти проверка"
+	_output 1 "   -s dns_server		- Указать DNS-сервер, через который будет идти проверка"
 	_output 1 "   -t				- Считать Time Out'ы ошибкой"
 	_output 1 "   --log [file]			- Вести отчет в file. Если file не указан, будет использован файл по умолчанию $LOG_FILE_DEFAULT"
 	_output 1 "     				  Подробнее на http://code.google.com/p/spamcheck/wiki/log"
@@ -323,7 +323,8 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		"-q"	) IS_QUIET=1 ; shift ;;
 		"-t"	) IS_TIME_OUT_ERROR=2 ; shift ;;
-		"-f"	) IS_FILE=1 ; DNSBL_FILE="$2" ; shift 2 ;;
+		"-f"	) 			    IS_FILE=1 ; DNSBL_FILE[${#DNSBL_FILE[@]}]="${2}" ; shift 2 ;;
+		"-F"	) [ "$IS_FILE" -eq "0" ] && IS_FILE=2 ; DNSBL_FILE[${#DNSBL_FILE[@]}]="${2}" ; shift 2 ;;
 		"-i"	) IS_INET=1 ; shift ;;
 		"-I"	) IS_INET=2 ; shift ;;
 		"-d"	) IS_ONE_DNSBL=1 ; DNSBL_LIST=( "$2" ) ; shift 2 ;;
@@ -331,7 +332,7 @@ while [ $# -gt 0 ]; do
 		"-s"	) IS_MY_DNS=1 ; DNS_SERVER="$2" ; shift 2 ;;
 		"-p"	) SHOW_IP_ONLY=1 ; shift ;;
 		# При добавлении/изменении имен параметров обновите строку для $SED
-		"--log" ) USE_LOG=1 ; shift ; [ -n "$(echo "$1" | $SED -e '/^-[qtfiIdlsp-]$/d;/^--\|--version\|--help\|--usage\|--slog\|--log\|--no-threads$/d')" ] && LOG_FILE="$1" && shift ;;
+		"--log" ) USE_LOG=1 ; shift ; [ -n "$(echo "$1" | $SED -e '/^-[qtfFiIdlsp-]$/d;/^--\|--version\|--help\|--usage\|--slog\|--log\|--no-threads$/d')" ] && LOG_FILE="$1" && shift ;;
 		"--slog") USE_SYSLOG=1 ; shift ;;
 		"--no-threads") DISABLE_THREADS=1 ; shift ;;
 		"--"	) shift ; _build_ip_list $* ; break ;;
@@ -342,18 +343,6 @@ while [ $# -gt 0 ]; do
 		*		) _build_ip_list $1 ; shift ;;
 	esac
 done
-
-if [ "$IS_FILE" -ne "0" ]; then
-	# Определяем тут же, является ли $DNSBL_FILE добавлением к существующему blacklist`у
-	if [ "+" == "${DNSBL_FILE:0:1}" ]; then
-		IS_FILE=2
-		DNSBL_FILE="${DNSBL_FILE/+}"
-	fi
-	if [ -z "$DNSBL_FILE" ]; then
-		_output 2 "Имя файла не указано. Если имя файла \"+\", укажите его как ./+"
-		_exit 1;
-	fi
-fi
 
 # Обрабатываем параметр --log первым, дабы зафиксировать все
 if [ "$USE_SYSLOG" -eq 0 -a "$USE_LOG" -eq 1 ] ; then
@@ -368,18 +357,23 @@ fi
 
 # Обработка параметров для заполнения $DNSBL_LIST 
 if [ "$IS_ONE_DNSBL" -ne "1" ]; then
-	if [ "$IS_FILE" -eq "1" -o "$IS_FILE" -eq "2" ]; then 
-		DNSBL_LIST_RES="$(_read_dnsbl "$DNSBL_FILE")"
-		if [ "$?" -eq "1" ]; then
-			_output 2 "${DNSBL_LIST_RES}"
-			_exit 1;
-		fi
-	fi
-	[ "$IS_FILE" -eq "1" ] && DNSBL_LIST=( ${DNSBL_LIST_RES} )
+	[ "$IS_FILE" -eq "1" ] && DNSBL_LIST=( )
 	[ "$IS_INET" -eq "1" ] && DNSBL_LIST=( $($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
 							$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp') )
 
-	[ "$IS_FILE" -eq "2" ] && DNSBL_LIST=( ${DNSBL_LIST[@]} ${DNSBL_LIST_RES} )
+	# make DNSBL_LIST
+	while [ ${#DNSBL_FILE[@]} -gt 0 ]; do
+		if [ "$IS_FILE" -eq "1" -o "$IS_FILE" -eq "2" ]; then
+			DNSBL_LIST_RES="$(_read_dnsbl "${DNSBL_FILE[$((${#DNSBL_FILE[@]}-1))]}")"
+			if [ "$?" -eq "1" ]; then
+				_output 2 "${DNSBL_LIST_RES}"
+				_exit 1;
+			fi
+		fi
+		DNSBL_LIST=( ${DNSBL_LIST[@]} ${DNSBL_LIST_RES} )
+		unset DNSBL_FILE[$((${#DNSBL_FILE[@]}-1))]
+	done
+
 	[ "$IS_INET" -eq "2" ] && DNSBL_LIST=( ${DNSBL_LIST[@]} $($WGET -q -O - 'http://www.myiptest.com/staticpages/index.php/check-Blacklisted-IP-DNSBL/'$DNS_SERVER | \
 								$SED -n '/href=.\+dnsbl=/s/^.\+dnsbl=\([a-zA-Z0-9\.\-]\+\).*$/\1/gp') )
 fi
