@@ -255,6 +255,7 @@ _parse_thread() {
 	local IP=$1
 	local DNSBL=$2
 
+	echo "$HOST -t A $IP.$DNSBL $DNS_SERVER"
 	GPD=$($HOST -t A $IP.$DNSBL $DNS_SERVER)
 	if [ $? -eq 1 ]; then
 		if [ -z "$(echo "$GPD" | $SED -n '/connection timed out/p')" ]; then
@@ -326,7 +327,8 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		"-q"	) IS_QUIET=1 ; shift ;;
 		"-t"	) IS_TIME_OUT_ERROR=2 ; shift ;;
-		"-f"	) 			    IS_FILE=1 ; DNSBL_FILE[${#DNSBL_FILE[@]}]="${2}" ; shift 2 ;;
+		"-f"	) [ "$IS_FILE" -eq "1" ] && _output 2 "Повторяющийся параметр -f" && exit 1 ;
+						    IS_FILE=1 ; DNSBL_FILE[${#DNSBL_FILE[@]}]="${2}" ; shift 2 ;;
 		"-F"	) [ "$IS_FILE" -eq "0" ] && IS_FILE=2 ; DNSBL_FILE[${#DNSBL_FILE[@]}]="${2}" ; shift 2 ;;
 		"-i"	) IS_INET=1 ; shift ;;
 		"-I"	) IS_INET=2 ; shift ;;
